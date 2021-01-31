@@ -1,5 +1,6 @@
 import discord
 import discord.ext.commands as commands
+import math
 
 from .database import connection as db
 
@@ -58,4 +59,4 @@ def subtract(member: discord.Member, amount: int, spare_change: bool):
 
 
 def from_float(amount: float) -> (int, bool):
-    return int(amount), not amount.is_integer()
+    return math.floor(amount), not amount.is_integer()

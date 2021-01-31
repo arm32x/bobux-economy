@@ -1,4 +1,7 @@
 """
+bobux economy v0.1.2
+  - fix -0.5 being interpreted as 0.5
+
 bobux economy v0.1.1
   - fix theft by paying negative amounts
   - add help information to commands
