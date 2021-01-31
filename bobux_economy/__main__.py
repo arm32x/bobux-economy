@@ -1,8 +1,17 @@
-import sqlite3
-from typing import *
+"""
+bobux economy v0.1.1
+  - fix theft by paying negative amounts
+  - add help information to commands
+  - add version information and changelog
+
+bobux economy v0.1.0
+  - initial release
+"""
 
 import discord
 from discord.ext import commands
+import sqlite3
+from typing import *
 
 from . import balance
 from . import database
@@ -45,15 +54,33 @@ def author_has_admin_role(ctx: commands.Context) -> bool:
     else:
         return author_can_manage_guild(ctx)
 
+
+@bot.command()
+async def version(ctx: commands.Context):
+    """Check the version of the bot."""
+
+    if ctx.invoked_subcommand is None:
+        await ctx.send(__doc__.strip().partition("\n")[0].strip())
+
+@bot.command()
+async def changelog(ctx: commands.Context):
+    """Show the changelog of the bot."""
+
+    await ctx.send(f"```{__doc__.strip()}```")
+
 @bot.group()
 @commands.guild_only()
 async def config(ctx: commands.Context):
+    """Change the settings of the bot."""
+
     if ctx.invoked_subcommand is None:
         raise commands.CommandError("Please specify an option to configure.")
 
 @config.command(name="prefix")
 @commands.check(author_can_manage_guild)
 async def config_prefix(ctx: commands.Context, new_prefix: str):
+    """Change the command prefix."""
+
     cursor.execute("""
         INSERT INTO guilds(id, prefix) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET prefix = excluded.prefix;
@@ -64,6 +91,8 @@ async def config_prefix(ctx: commands.Context, new_prefix: str):
 @config.command(name="admin_role")
 @commands.check(author_has_admin_role)
 async def config_admin_role(ctx: commands.Context, role: discord.Role):
+    """Change which role is required to modify balances."""
+
     cursor.execute("""
         INSERT INTO guilds(id, admin_role) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role;
@@ -75,12 +104,16 @@ async def config_admin_role(ctx: commands.Context, role: discord.Role):
 @bot.group()
 @commands.guild_only()
 async def bal(ctx: commands.Context):
+    """Check your balance."""
+
     if ctx.invoked_subcommand is None:
         await bal_check(ctx)
 
 # TODO: Generate bobux memes to show balance.
 @bal.command(name="check")
 async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = None):
+    """Check the balance of yourself or someone else."""
+
     target = target or ctx.author
 
     amount, spare_change = balance.get(target)
@@ -93,6 +126,8 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
 @bal.command(name="set")
 @commands.check(author_has_admin_role)
 async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
+    """Set someone's balance."""
+
     amount, spare_change = balance.from_float(amount)
     balance.set(target, amount, spare_change)
     database.connection.commit()
@@ -105,6 +140,8 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
 @bal.command(name="add")
 @commands.check(author_has_admin_role)
 async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
+    """Add bobux to someone's balance."""
+
     balance.add(target, *balance.from_float(amount))
     database.connection.commit()
 
@@ -113,6 +150,8 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
 @bal.command(name="sub")
 @commands.check(author_has_admin_role)
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
+    """Remove bobux from someone's balance."""
+
     balance.subtract(target, *balance.from_float(amount))
     database.connection.commit()
 
@@ -122,6 +161,8 @@ async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
 @bot.command()
 @commands.guild_only()
 async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
+    """Pay someone."""
+
     try:
         amount, spare_change = balance.from_float(amount)
         balance.subtract(ctx.author, amount, spare_change)

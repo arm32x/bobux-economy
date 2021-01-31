@@ -8,6 +8,10 @@ class InsufficientFundsError(commands.CommandError):
     def __init__(self):
         super().__init__("Insufficient funds.")
 
+class NegativeAmountError(commands.CommandError):
+    def __init__(self):
+        super().__init__("Amount must not be negative.")
+
 
 def get(member: discord.Member) -> (int, bool):
     c = db.cursor()
@@ -24,6 +28,9 @@ def set(member: discord.Member, amount: int, spare_change: bool):
     """, (member.id, member.guild.id, amount, spare_change))
 
 def add(member: discord.Member, amount: int, spare_change: bool):
+    if amount < 0:
+        raise NegativeAmountError()
+
     balance, balance_spare_change = get(member)
 
     balance += amount
@@ -34,6 +41,9 @@ def add(member: discord.Member, amount: int, spare_change: bool):
     set(member, balance, balance_spare_change)
 
 def subtract(member: discord.Member, amount: int, spare_change: bool):
+    if amount < 0:
+        raise NegativeAmountError()
+
     balance, balance_spare_change = get(member)
 
     if balance < amount or balance == amount and spare_change and not balance_spare_change:
