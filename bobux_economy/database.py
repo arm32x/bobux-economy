@@ -7,7 +7,8 @@ def initialize(cursor: sqlite3.Cursor):
         CREATE TABLE IF NOT EXISTS guilds(
             id INTEGER NOT NULL PRIMARY KEY,
             prefix TEXT NOT NULL DEFAULT "b$",
-            admin_role INTEGER
+            admin_role INTEGER,
+            memes_channel INTEGER
         );
         CREATE TABLE IF NOT EXISTS members(
             id INTEGER NOT NULL,
