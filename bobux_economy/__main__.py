@@ -1,4 +1,7 @@
 """
+bobux economy v0.1.3
+  - fix normal users being allowed to change prefix
+
 bobux economy v0.1.2
   - fix -0.5 being interpreted as 0.5
 
