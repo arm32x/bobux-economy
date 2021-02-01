@@ -11,10 +11,11 @@ bobux economy v0.1.0
   - initial release
 """
 
-import discord
-from discord.ext import commands
 import sqlite3
 from typing import *
+
+import discord
+from discord.ext import commands
 
 from . import balance
 from . import database
@@ -46,7 +47,7 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
 
 
 def author_can_manage_guild(ctx: commands.Context) -> bool:
-    return cast(ctx.author.permissions_in(ctx.channel).manage_guild, bool)
+    return bool(ctx.author.permissions_in(ctx.channel).manage_guild)
 
 def author_has_admin_role(ctx: commands.Context) -> bool:
     cursor.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
