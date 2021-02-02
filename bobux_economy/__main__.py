@@ -23,6 +23,7 @@ from discord.ext import commands
 import balance
 import database
 from database import connection as db
+import upvotes
 
 database.initialize(db.cursor())
 
@@ -42,6 +43,14 @@ bot = commands.Bot(command_prefix=determine_prefix)
 @bot.event
 async def on_ready():
     print("Ready.")
+
+@bot.event
+async def on_message(message: discord.Message):
+    c = db.cursor()
+    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
+    memes_channel_id = (c.fetchone() or (None, ))[0]
+    if memes_channel_id is not None and message.channel.id == memes_channel_id and len(message.attachments) > 0:
+        await upvotes.add_reactions(bot, message)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
@@ -110,6 +119,19 @@ async def config_admin_role(ctx: commands.Context, role: discord.Role):
     """, (ctx.guild.id, role.id))
     db.commit()
     await ctx.send(f"Set admin role to {role.mention}.")
+
+@config.command(name="memes_channel")
+@commands.check(author_can_manage_guild)
+async def config_memes_channel(ctx: commands.Context, channel: discord.TextChannel):
+    """Set the channel where upvote reactions are enabled."""
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO guilds(id, memes_channel) VALUES(?, ?)
+            ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel;
+    """, (ctx.guild.id, channel.id))
+    db.commit()
+    await ctx.send(f"Set memes channel to {channel.mention}.")
 
 
 @bot.group()
