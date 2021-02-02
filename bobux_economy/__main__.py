@@ -14,6 +14,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+import json
 import sqlite3
 from typing import *
 
@@ -23,8 +24,11 @@ from discord.ext import commands
 import balance
 import database
 from database import connection as db
+import template
 
 database.initialize(db.cursor())
+with open("templates.json", "r") as templates_file:
+    templates = json.load(templates_file)
 
 
 def determine_prefix(_, message: discord.Message) -> str:
@@ -128,10 +132,8 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
     target = target or ctx.author
 
     amount, spare_change = balance.get(target)
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    template_name = "bobux_and_change" if spare_change else "bobux"
+    await ctx.send(template.fill("{mention}: [" + template_name + "]", templates).format(mention=target.mention, bobux=amount))
 
 @bal.command(name="set")
 @commands.check(author_has_admin_role)
@@ -142,10 +144,8 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
     balance.set(target, amount, spare_change)
     db.commit()
 
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    template_name = "bobux_and_change" if spare_change else "bobux"
+    await ctx.send(template.fill("{mention}: [" + template_name + "]", templates).format(mention=target.mention, bobux=amount))
 
 @bal.command(name="add")
 @commands.check(author_has_admin_role)

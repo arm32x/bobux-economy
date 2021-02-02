@@ -1,0 +1,19 @@
+{
+    "change": [
+        "some spare change",
+        "some loose change",
+        "some change",
+        "change"
+    ],
+    "approximately": [
+        "approximately",
+        "roughly",
+        ""
+    ],
+    "bobux": [
+        "{bobux} bobux"
+    ],
+    "bobux_and_change": [
+        "[approximately] {bobux} bobux and [change]"
+    ]
+}
