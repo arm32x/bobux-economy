@@ -1,8 +1,9 @@
-import discord
-import discord.ext.commands as commands
 import math
 
-from .database import connection as db
+import discord
+from discord.ext import commands
+
+from database import connection as db
 
 
 class InsufficientFundsError(commands.CommandError):

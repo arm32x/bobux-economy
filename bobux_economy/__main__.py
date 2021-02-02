@@ -20,17 +20,17 @@ from typing import *
 import discord
 from discord.ext import commands
 
-from . import balance
-from . import database
+import balance
+import database
+from database import connection as db
 
-
-cursor = database.connection.cursor()
-database.initialize(cursor)
+database.initialize(db.cursor())
 
 
 def determine_prefix(_, message: discord.Message) -> str:
-    cursor.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
-    guild_row: Optional[tuple[str]] = cursor.fetchone()
+    c = db.cursor()
+    c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
+    guild_row: Optional[tuple[str]] = c.fetchone()
     if guild_row is None:
         return "b$"
     else:
@@ -53,8 +53,9 @@ def author_can_manage_guild(ctx: commands.Context) -> bool:
     return bool(ctx.author.permissions_in(ctx.channel).manage_guild)
 
 def author_has_admin_role(ctx: commands.Context) -> bool:
-    cursor.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
-    row: tuple[Optional[int]] = cursor.fetchone() or (None, )
+    c = db.cursor()
+    c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
+    row: tuple[Optional[int]] = c.fetchone() or (None, )
     admin_role = ctx.guild.get_role(row[0])
     if admin_role is not None:
         return admin_role in ctx.author.roles
@@ -75,6 +76,7 @@ async def changelog(ctx: commands.Context):
 
     await ctx.send(f"```{__doc__.strip()}```")
 
+
 @bot.group()
 @commands.guild_only()
 async def config(ctx: commands.Context):
@@ -88,11 +90,12 @@ async def config(ctx: commands.Context):
 async def config_prefix(ctx: commands.Context, new_prefix: str):
     """Change the command prefix."""
 
-    cursor.execute("""
+    c = db.cursor()
+    c.execute("""
         INSERT INTO guilds(id, prefix) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET prefix = excluded.prefix;
     """, (ctx.guild.id, new_prefix))
-    database.connection.commit()
+    db.commit()
     await ctx.send(f"Updated prefix to `{new_prefix}`.")
 
 @config.command(name="admin_role")
@@ -100,11 +103,12 @@ async def config_prefix(ctx: commands.Context, new_prefix: str):
 async def config_admin_role(ctx: commands.Context, role: discord.Role):
     """Change which role is required to modify balances."""
 
-    cursor.execute("""
+    c = db.cursor()
+    c.execute("""
         INSERT INTO guilds(id, admin_role) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role;
     """, (ctx.guild.id, role.id))
-    database.connection.commit()
+    db.commit()
     await ctx.send(f"Set admin role to {role.mention}.")
 
 
@@ -124,7 +128,6 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
     target = target or ctx.author
 
     amount, spare_change = balance.get(target)
-
     if spare_change:
         await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
     else:
@@ -137,7 +140,7 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
 
     amount, spare_change = balance.from_float(amount)
     balance.set(target, amount, spare_change)
-    database.connection.commit()
+    db.commit()
 
     if spare_change:
         await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
@@ -150,7 +153,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
     """Add bobux to someone's balance."""
 
     balance.add(target, *balance.from_float(amount))
-    database.connection.commit()
+    db.commit()
 
     await bal_check(ctx, target)
 
@@ -160,7 +163,7 @@ async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
 
     balance.subtract(target, *balance.from_float(amount))
-    database.connection.commit()
+    db.commit()
 
     await bal_check(ctx, target)
 
@@ -175,10 +178,10 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
         balance.subtract(ctx.author, amount, spare_change)
         balance.add(recipient, amount, spare_change)
     except sqlite3.Error:
-        database.connection.rollback()
+        db.rollback()
         raise
     else:
-        database.connection.commit()
+        db.commit()
 
     await bal_check(ctx)
     await bal_check(ctx, recipient)
@@ -190,4 +193,4 @@ try:
         bot.run(token)
 except KeyboardInterrupt:
     print("Stopping...")
-    database.connection.close()
+    db.close()

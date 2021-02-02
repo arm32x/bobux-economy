@@ -7,7 +7,8 @@ def initialize(cursor: sqlite3.Cursor):
         CREATE TABLE IF NOT EXISTS guilds(
             id INTEGER NOT NULL PRIMARY KEY,
             prefix TEXT NOT NULL DEFAULT "b$",
-            admin_role INTEGER
+            admin_role INTEGER,
+            memes_channel INTEGER
         );
         CREATE TABLE IF NOT EXISTS members(
             id INTEGER NOT NULL,
@@ -16,7 +17,7 @@ def initialize(cursor: sqlite3.Cursor):
             spare_change BOOLEAN NOT NULL DEFAULT 0 CHECK(spare_change IN (0, 1)),
             
             PRIMARY KEY(id, guild_id),
-            FOREIGN KEY(guild_id) REFERENCES guilds(id)
+            FOREIGN KEY(guild_id) REFERENCES guilds(id) ON DELETE CASCADE
         );
     """)
     connection.commit()
