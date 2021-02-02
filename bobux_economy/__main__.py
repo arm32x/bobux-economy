@@ -20,8 +20,11 @@ from typing import *
 import discord
 from discord.ext import commands
 
-from . import balance
-from .database import connection as db
+import balance
+import database
+from database import connection as db
+
+database.initialize(db.cursor())
 
 
 def determine_prefix(_, message: discord.Message) -> str:
@@ -72,6 +75,7 @@ async def changelog(ctx: commands.Context):
     """Show the changelog of the bot."""
 
     await ctx.send(f"```{__doc__.strip()}```")
+
 
 @bot.group()
 @commands.guild_only()

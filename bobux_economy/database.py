@@ -17,7 +17,7 @@ def initialize(cursor: sqlite3.Cursor):
             spare_change BOOLEAN NOT NULL DEFAULT 0 CHECK(spare_change IN (0, 1)),
             
             PRIMARY KEY(id, guild_id),
-            FOREIGN KEY(guild_id) REFERENCES guilds(id)
+            FOREIGN KEY(guild_id) REFERENCES guilds(id) ON DELETE CASCADE
         );
     """)
     connection.commit()
