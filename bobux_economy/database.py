@@ -19,5 +19,14 @@ def initialize(cursor: sqlite3.Cursor):
             PRIMARY KEY(id, guild_id),
             FOREIGN KEY(guild_id) REFERENCES guilds(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS votes(
+            message_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            member_id INTEGER NOT NULL,
+            vote INTEGER NOT NULL CHECK(vote IN (-1, 1)),
+            
+            PRIMARY KEY(message_id, member_id),
+            FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE
+        );
     """)
     connection.commit()

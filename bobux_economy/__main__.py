@@ -33,15 +33,12 @@ logging.debug("Initializing...")
 
 
 def determine_prefix(_, message: discord.Message) -> str:
-    logging.debug("Determining prefix for guild '%s'...", message.guild.name)
     c = db.cursor()
     c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
     guild_row: Optional[Tuple[str]] = c.fetchone()
     if guild_row is None:
-        logging.debug("Guild '%s' has the default prefix 'b$'.", message.guild.name)
         return "b$"
     else:
-        logging.debug("Guild '%s' has prefix '%s'.", message.guild.name, guild_row[0])
         return guild_row[0]
 
 bot = commands.Bot(command_prefix=determine_prefix)
@@ -53,7 +50,6 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    logging.debug("Message '%s' received.", message.content)
     c = db.cursor()
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id = (c.fetchone() or (None, ))[0]
@@ -61,6 +57,55 @@ async def on_message(message: discord.Message):
         await upvotes.add_reactions(bot, message)
     # This is required or else the entire bot ceases to function.
     await bot.process_commands(message)
+
+# # TODO: Replace with 'on_raw_reaction_add'.
+# @bot.event
+# async def on_reaction_add(reaction: discord.Reaction, user: discord.User):
+#     if user == bot.user:
+#         # This reaction was added by the bot, ignore it.
+#         return
+#
+#     if isinstance(user, discord.Member):
+#         member = cast(discord.Member, user)
+#
+#         c = db.cursor()
+#         c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (reaction.message.guild.id, ))
+#         memes_channel_id = (c.fetchone() or (None, ))[0]
+#         if memes_channel_id is not None and reaction.message.channel.id == memes_channel_id and len(reaction.message.attachments) > 0 and not isinstance(reaction.emoji, str):
+#             vote = None
+#             if reaction.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+#                 vote = upvotes.Vote.UPVOTE
+#             elif reaction.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+#                 vote = upvotes.Vote.DOWNVOTE
+#
+#             logging.debug("Vote is %s.", vote)
+#
+#             if vote is not None:
+#                 await upvotes.remove_extra_reactions(bot, reaction.message, member, vote)
+#                 upvotes.record_vote(reaction.message.id, reaction.message.channel.id, member.id, vote)
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        # This reaction was added by the bot, ignore it.
+        return
+
+    if payload.member is not None:
+        c = db.cursor()
+        c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
+        memes_channel_id = (c.fetchone() or (None, ))[0]
+
+        if payload.channel_id == memes_channel_id:
+            vote = None
+            if payload.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+                vote = upvotes.Vote.UPVOTE
+            elif payload.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+                vote = upvotes.Vote.DOWNVOTE
+
+            if vote is not None:
+                message = bot.get_channel(payload.channel_id).get_partial_message(payload.message_id)
+                await upvotes.remove_extra_reactions(bot, message, payload.member, vote)
+                upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
