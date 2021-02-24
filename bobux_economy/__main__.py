@@ -14,6 +14,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+import logging
 import sqlite3
 from typing import *
 
@@ -25,16 +26,22 @@ import database
 from database import connection as db
 import upvotes
 
+logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
 database.initialize(db.cursor())
+
+logging.debug("Initializing...")
 
 
 def determine_prefix(_, message: discord.Message) -> str:
+    logging.debug("Determining prefix for guild '%s'...", message.guild.name)
     c = db.cursor()
     c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
-    guild_row: Optional[tuple[str]] = c.fetchone()
+    guild_row: Optional[Tuple[str]] = c.fetchone()
     if guild_row is None:
+        logging.debug("Guild '%s' has the default prefix 'b$'.", message.guild.name)
         return "b$"
     else:
+        logging.debug("Guild '%s' has prefix '%s'.", message.guild.name, guild_row[0])
         return guild_row[0]
 
 bot = commands.Bot(command_prefix=determine_prefix)
@@ -42,10 +49,11 @@ bot = commands.Bot(command_prefix=determine_prefix)
 
 @bot.event
 async def on_ready():
-    print("Ready.")
+    logging.info("Ready!")
 
 @bot.event
 async def on_message(message: discord.Message):
+    logging.debug("Message '%s' received.", message.content)
     c = db.cursor()
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id = (c.fetchone() or (None, ))[0]
@@ -64,7 +72,7 @@ def author_can_manage_guild(ctx: commands.Context) -> bool:
 def author_has_admin_role(ctx: commands.Context) -> bool:
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
-    row: tuple[Optional[int]] = c.fetchone() or (None, )
+    row: Tuple[Optional[int]] = c.fetchone() or (None, )
     admin_role = ctx.guild.get_role(row[0])
     if admin_role is not None:
         return admin_role in ctx.author.roles
