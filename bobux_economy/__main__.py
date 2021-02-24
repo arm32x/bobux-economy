@@ -59,6 +59,8 @@ async def on_message(message: discord.Message):
     memes_channel_id = (c.fetchone() or (None, ))[0]
     if memes_channel_id is not None and message.channel.id == memes_channel_id and len(message.attachments) > 0:
         await upvotes.add_reactions(bot, message)
+    # This is required or else the entire bot ceases to function.
+    await bot.process_commands(message)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
