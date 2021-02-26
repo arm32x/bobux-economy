@@ -8,7 +8,8 @@ def initialize(cursor: sqlite3.Cursor):
             id INTEGER NOT NULL PRIMARY KEY,
             prefix TEXT NOT NULL DEFAULT "b$",
             admin_role INTEGER,
-            memes_channel INTEGER
+            memes_channel INTEGER,
+            last_memes_message INTEGER
         );
         CREATE TABLE IF NOT EXISTS members(
             id INTEGER NOT NULL,
