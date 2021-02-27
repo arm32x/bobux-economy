@@ -46,7 +46,9 @@ bot = commands.Bot(command_prefix=determine_prefix)
 
 @bot.event
 async def on_ready():
-    logging.info("Ready!")
+    logging.info("Synchronizing votes...")
+    await upvotes.sync_votes(bot)
+    logging.info("Done!")
 
 @bot.event
 async def on_message(message: discord.Message):
