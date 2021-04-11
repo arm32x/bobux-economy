@@ -26,7 +26,7 @@ import database
 from database import connection as db
 import upvotes
 
-logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
+logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 database.initialize(db.cursor())
 
 logging.debug("Initializing...")

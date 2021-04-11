@@ -58,36 +58,62 @@ async def remove_extra_reactions(client: discord.Client, message: discord.Messag
         await message.remove_reaction(downvote_emoji, user)
 
 
-def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True):
+def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True, event: bool = True):
     c = db.cursor()
+
+    c.execute("""
+        SELECT vote FROM votes WHERE message_id = ? AND channel_id = ? AND member_id = ?;
+    """, (message_id, channel_id, member_id))
+    previous_vote_code: Optional[int] = (c.fetchone() or (None, ))[0]
+    previous_vote: Optional[Vote] = Vote(previous_vote_code) if previous_vote_code is not None else None
+
     c.execute("""
         INSERT INTO votes(message_id, channel_id, member_id, vote) VALUES (?, ?, ?, ?)
             ON CONFLICT(message_id, member_id) DO UPDATE SET vote = excluded.vote;
     """, (message_id, channel_id, member_id, vote))
+
     if commit: db.commit()
     logging.debug("Recorded %s by member %d on message %d.", vote.name.lower(), member_id, message_id)
 
-def delete_vote(message_id: int, member_id: int, check_equal_to: Optional[Vote] = None):
+    if event:
+        on_vote(message_id, channel_id, member_id, previous_vote, vote)
+
+def delete_vote(message_id: int, member_id: int, check_equal_to: Optional[Vote] = None, commit: bool = True, event: bool = True):
     c = db.cursor()
     if check_equal_to is not None:
         c.execute("""
-            DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
+            DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ? RETURNING vote;
         """, (message_id, member_id, check_equal_to))
-        db.commit()
+
+        if event:
+            previous_vote = (c.fetchone() or (None, ))[0]
+            if previous_vote is not None:
+                on_vote(message_id, None, member_id, Vote(previous_vote), None)
+
+        if commit: db.commit()
         logging.debug("Removed vote by member %d on message %d, if it was %s.", member_id, message_id, "an upvote" if check_equal_to == Vote.UPVOTE else "a downvote")
+
     else:
         c.execute("""
-            DELETE FROM votes WHERE message_id = ? AND member_id = ?;
+            DELETE FROM votes WHERE message_id = ? AND member_id = ? RETURNING vote;
         """, (message_id, member_id))
-        db.commit()
+
+        if event:
+            previous_vote = (c.fetchone() or (None, ))[0]
+            if previous_vote is not None:
+                on_vote(message_id, None, member_id, Vote(previous_vote), None)
+
+        if commit: db.commit()
         logging.debug("Removed vote by member %d on message %d.", member_id, message_id)
 
 
 async def _sync_message(client: discord.Client, message: discord.Message):
     c = db.cursor()
     c.execute("""
-        DELETE FROM votes WHERE message_id = ? AND channel_id = ?;
+        DELETE FROM votes WHERE message_id = ? AND channel_id = ? RETURNING votes.member_id, vote;
     """, (message.id, message.channel.id))
+    deleted_rows = c.fetchall()
+    previous_votes = dict([ (u, Vote(v)) for (u, v) in deleted_rows ]) if deleted_rows is not None else { }
 
     await add_reactions(client, message)
     for reaction in message.reactions:
@@ -101,7 +127,8 @@ async def _sync_message(client: discord.Client, message: discord.Message):
             if vote is not None:
                 async for user in reaction.users():
                     if user != client.user:
-                        record_vote(message.id, message.channel.id, user.id, vote, commit=False)
+                        record_vote(message.id, message.channel.id, user.id, vote, commit=False, event=False)
+                        on_vote(message.id, message.channel.id, user.id, previous_votes.get(user.id), vote)
     db.commit()
 
 async def sync_votes(client: discord.Client):
@@ -125,3 +152,8 @@ async def sync_votes(client: discord.Client):
         if isinstance(channel, discord.TextChannel):
             async for message in channel.history(after=discord.Object(last_memes_message)):
                 await _sync_message(client, message)
+
+
+def on_vote(message_id: int, channel_id: Optional[int], member_id: int, old: Optional[Vote], new: Optional[Vote]):
+    if old != new:
+        logging.info(f"{member_id} on {message_id}: {old} -> {new}")
