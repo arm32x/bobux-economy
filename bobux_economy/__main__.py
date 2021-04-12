@@ -1,4 +1,11 @@
 """
+bobux economy v0.2.0
+  - MANUAL DATABASE MIGRATION REQUIRED
+  - add upvote and downvote buttons on messages in the memes channel
+  - bobux are rewarded for upvotes and for voting on other people's posts
+  - bobux are removed for receiving downvotes
+  - negative balances are now allowed under certain circumstances
+
 bobux economy v0.1.3
   - fix normal users being allowed to change prefix
 
