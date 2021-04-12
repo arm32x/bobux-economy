@@ -24,30 +24,18 @@ from discord.ext import commands
 import balance
 import database
 from database import connection as db
+from globals import bot
 import upvotes
 
-logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
 database.initialize(db.cursor())
 
 logging.debug("Initializing...")
 
-
-def determine_prefix(_, message: discord.Message) -> str:
-    c = db.cursor()
-    c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
-    guild_row: Optional[Tuple[str]] = c.fetchone()
-    if guild_row is None:
-        return "b$"
-    else:
-        return guild_row[0]
-
-bot = commands.Bot(command_prefix=determine_prefix)
-
-
 @bot.event
 async def on_ready():
     logging.info("Synchronizing votes...")
-    await upvotes.sync_votes(bot)
+    await upvotes.sync_votes()
     logging.info("Done!")
 
 @bot.event
@@ -56,7 +44,7 @@ async def on_message(message: discord.Message):
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id = (c.fetchone() or (None, ))[0]
     if memes_channel_id is not None and message.channel.id == memes_channel_id:
-        await upvotes.add_reactions(bot, message)
+        await upvotes.add_reactions(message)
         c.execute("""
             INSERT INTO guilds(id, last_memes_message) VALUES (?, ?)
                 ON CONFLICT(id) DO UPDATE SET last_memes_message = excluded.last_memes_message;
@@ -89,11 +77,11 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
                 if payload.user_id == message.author.id:
                     # The poster voted on their own message.
-                    await upvotes.remove_extra_reactions(bot, message, payload.member, None)
+                    await upvotes.remove_extra_reactions(message, payload.member, None)
                     return
 
-                upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
-                await upvotes.remove_extra_reactions(bot, message, payload.member, vote)
+                await upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
+                await upvotes.remove_extra_reactions(message, payload.member, vote)
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
@@ -119,11 +107,11 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
                     return
 
                 message = await bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
-                upvotes.delete_vote(payload.message_id, payload.user_id, check_equal_to=vote)
+                await upvotes.delete_vote(payload.message_id, payload.channel_id, payload.user_id, check_equal_to=vote)
                 user = bot.get_user(payload.user_id)
                 if user is None:
                     user = await bot.fetch_user(payload.user_id)
-                await upvotes.remove_extra_reactions(bot, message, user, None)
+                await upvotes.remove_extra_reactions(message, user, None)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
@@ -168,8 +156,7 @@ async def config(ctx: commands.Context):
         raise commands.CommandError("Please specify an option to configure.")
 
 @config.command(name="prefix")
-# This stupid cast is required because the type stubs are stupid.
-@commands.check(cast(author_can_manage_guild, "commands._CheckPredicate"))
+@commands.check(author_can_manage_guild)
 async def config_prefix(ctx: commands.Context, new_prefix: str):
     """Change the command prefix."""
 
@@ -182,7 +169,7 @@ async def config_prefix(ctx: commands.Context, new_prefix: str):
     await ctx.send(f"Updated prefix to `{new_prefix}`.")
 
 @config.command(name="admin_role")
-@commands.check(cast(author_has_admin_role, "commands._CheckPredicate"))
+@commands.check(author_has_admin_role)
 async def config_admin_role(ctx: commands.Context, role: discord.Role):
     """Change which role is required to modify balances."""
 
@@ -195,7 +182,7 @@ async def config_admin_role(ctx: commands.Context, role: discord.Role):
     await ctx.send(f"Set admin role to {role.mention}.")
 
 @config.command(name="memes_channel")
-@commands.check(cast(author_can_manage_guild, "commands._CheckPredicate"))
+@commands.check(author_can_manage_guild)
 async def config_memes_channel(ctx: commands.Context, channel: discord.TextChannel):
     """Set the channel where upvote reactions are enabled."""
 
@@ -230,7 +217,7 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
         await ctx.send(f"{target.mention}: {amount} bobux")
 
 @bal.command(name="set")
-@commands.check(cast(author_has_admin_role, "commands._CheckPredicate"))
+@commands.check(author_has_admin_role)
 async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
     """Set someone's balance."""
 
@@ -244,7 +231,7 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
         await ctx.send(f"{target.mention}: {amount} bobux")
 
 @bal.command(name="add")
-@commands.check(cast(author_has_admin_role, "commands._CheckPredicate"))
+@commands.check(author_has_admin_role)
 async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
     """Add bobux to someone's balance."""
 
@@ -254,7 +241,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
     await bal_check(ctx, target)
 
 @bal.command(name="sub")
-@commands.check(cast(author_has_admin_role, "commands._CheckPredicate"))
+@commands.check(author_has_admin_role)
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
 

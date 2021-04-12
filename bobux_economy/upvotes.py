@@ -5,16 +5,18 @@ from typing import *
 import discord
 from discord.ext import commands
 
+import balance
 from database import connection as db
+from globals import bot
 
 
 # TODO: Make these configurable.
 UPVOTE_EMOJI_ID = 806246359560486933
 DOWNVOTE_EMOJI_ID = 806246395723645009
 
-def _get_emojis(client: discord.Client) -> Tuple[discord.Emoji, discord.Emoji]:
-    upvote_emoji = client.get_emoji(UPVOTE_EMOJI_ID)
-    downvote_emoji = client.get_emoji(DOWNVOTE_EMOJI_ID)
+def _get_emojis() -> Tuple[discord.Emoji, discord.Emoji]:
+    upvote_emoji = bot.get_emoji(UPVOTE_EMOJI_ID)
+    downvote_emoji = bot.get_emoji(DOWNVOTE_EMOJI_ID)
 
     if upvote_emoji is None or downvote_emoji is None:
         raise commands.CommandError("Could not get upvote or downvote emoji.")
@@ -27,8 +29,8 @@ class Vote(enum.IntEnum):
     DOWNVOTE = -1
 
 
-async def add_reactions(client: discord.Client, message: Union[discord.Message, discord.PartialMessage]):
-    upvote_emoji, downvote_emoji = _get_emojis(client)
+async def add_reactions(message: Union[discord.Message, discord.PartialMessage]):
+    upvote_emoji, downvote_emoji = _get_emojis()
 
     await message.add_reaction(upvote_emoji)
     await message.add_reaction(downvote_emoji)
@@ -45,10 +47,10 @@ async def _user_reacted(message: discord.Message, user: discord.User, emoji: dis
                     return True
     return False
 
-async def remove_extra_reactions(client: discord.Client, message: discord.Message, user: discord.User, vote: Optional[Vote]):
+async def remove_extra_reactions(message: discord.Message, user: discord.User, vote: Optional[Vote]):
     logging.debug("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
 
-    upvote_emoji, downvote_emoji = _get_emojis(client)
+    upvote_emoji, downvote_emoji = _get_emojis()
 
     if vote != Vote.UPVOTE and await _user_reacted(message, user, upvote_emoji):
         recently_removed_reactions.append((message.id, Vote.UPVOTE, user.id))
@@ -58,7 +60,7 @@ async def remove_extra_reactions(client: discord.Client, message: discord.Messag
         await message.remove_reaction(downvote_emoji, user)
 
 
-def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True, event: bool = True):
+async def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True, event: bool = True):
     c = db.cursor()
 
     c.execute("""
@@ -76,9 +78,9 @@ def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, co
     logging.debug("Recorded %s by member %d on message %d.", vote.name.lower(), member_id, message_id)
 
     if event:
-        on_vote(message_id, channel_id, member_id, previous_vote, vote)
+        await on_vote_raw(message_id, channel_id, member_id, previous_vote, vote)
 
-def delete_vote(message_id: int, member_id: int, check_equal_to: Optional[Vote] = None, commit: bool = True, event: bool = True):
+async def delete_vote(message_id: int, channel_id: int, member_id: int, check_equal_to: Optional[Vote] = None, commit: bool = True, event: bool = True):
     c = db.cursor()
     if check_equal_to is not None:
         c.execute("""
@@ -88,7 +90,7 @@ def delete_vote(message_id: int, member_id: int, check_equal_to: Optional[Vote] 
         if event:
             previous_vote = (c.fetchone() or (None, ))[0]
             if previous_vote is not None:
-                on_vote(message_id, None, member_id, Vote(previous_vote), None)
+                await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
         if commit: db.commit()
         logging.debug("Removed vote by member %d on message %d, if it was %s.", member_id, message_id, "an upvote" if check_equal_to == Vote.UPVOTE else "a downvote")
@@ -101,13 +103,13 @@ def delete_vote(message_id: int, member_id: int, check_equal_to: Optional[Vote] 
         if event:
             previous_vote = (c.fetchone() or (None, ))[0]
             if previous_vote is not None:
-                on_vote(message_id, None, member_id, Vote(previous_vote), None)
+                await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
         if commit: db.commit()
         logging.debug("Removed vote by member %d on message %d.", member_id, message_id)
 
 
-async def _sync_message(client: discord.Client, message: discord.Message):
+async def _sync_message(message: discord.Message):
     c = db.cursor()
     c.execute("""
         DELETE FROM votes WHERE message_id = ? AND channel_id = ? RETURNING votes.member_id, vote;
@@ -115,7 +117,7 @@ async def _sync_message(client: discord.Client, message: discord.Message):
     deleted_rows = c.fetchall()
     previous_votes = dict([ (u, Vote(v)) for (u, v) in deleted_rows ]) if deleted_rows is not None else { }
 
-    await add_reactions(client, message)
+    await add_reactions(message)
     for reaction in message.reactions:
         if not isinstance(reaction.emoji, str):
             vote = None
@@ -126,12 +128,12 @@ async def _sync_message(client: discord.Client, message: discord.Message):
 
             if vote is not None:
                 async for user in reaction.users():
-                    if user != client.user:
-                        record_vote(message.id, message.channel.id, user.id, vote, commit=False, event=False)
-                        on_vote(message.id, message.channel.id, user.id, previous_votes.get(user.id), vote)
+                    if user != bot.user:
+                        await record_vote(message.id, message.channel.id, user.id, vote, commit=False, event=False)
+                        await on_vote_raw(message.id, message.channel.id, user.id, previous_votes.get(user.id), vote)
     db.commit()
 
-async def sync_votes(client: discord.Client):
+async def sync_votes():
     c = db.cursor()
     c.execute("""
         SELECT DISTINCT message_id, channel_id FROM votes;
@@ -139,8 +141,8 @@ async def sync_votes(client: discord.Client):
     result: List[Tuple[int, int]] = c.fetchall()
     # TODO: Parallelize this.
     for message_id, channel_id in result:
-        message = await client.get_channel(channel_id).fetch_message(message_id)
-        await _sync_message(client, message)
+        message = await bot.get_channel(channel_id).fetch_message(message_id)
+        await _sync_message(message)
 
     c.execute("""
         SELECT memes_channel, last_memes_message FROM guilds
@@ -148,12 +150,56 @@ async def sync_votes(client: discord.Client):
     """)
     result = c.fetchall()
     for channel_id, last_memes_message in result:
-        channel = client.get_channel(channel_id)
+        channel = bot.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
             async for message in channel.history(after=discord.Object(last_memes_message)):
-                await _sync_message(client, message)
+                await _sync_message(message)
 
 
-def on_vote(message_id: int, channel_id: Optional[int], member_id: int, old: Optional[Vote], new: Optional[Vote]):
+POSTER_REWARD = 5.0
+VOTER_REWARD = 2.5
+
+async def on_vote_raw(message_id: int, channel_id: int, member_id: int, old: Optional[Vote], new: Optional[Vote]):
+    channel = bot.get_channel(channel_id)
+    partial_message = channel.get_partial_message(message_id)
+    member = channel.guild.get_member(member_id) or await channel.guild.fetch_member(member_id)
+    if member is None:
+        logging.error(f"Member {member_id} not found in guild {channel.guild.id}!")
+        return
+    await on_vote(partial_message, member, old, new)
+
+async def on_vote(partial_message: discord.PartialMessage, member: discord.Member, old: Optional[Vote], new: Optional[Vote]):
     if old != new:
-        logging.info(f"{member_id} on {message_id}: {old} -> {new}")
+        logging.debug(f"{member.id} on {partial_message.id}: {old} -> {new}")
+
+        old_value = old or 0
+        new_value = new or 0
+        difference = new_value - old_value
+
+        negative = difference < 0
+        poster_reward = balance.from_float(POSTER_REWARD * abs(difference))
+        voter_reward = balance.from_float(VOTER_REWARD * abs(difference))
+
+        message = await partial_message.fetch()
+        poster = message.author if isinstance(message.author, discord.Member) else member.guild.get_member(message.author.id) or await member.guild.fetch_member(message.author.id)
+        if poster is None:
+            logging.error(f"Member {message.author.id} not found in guild {member.guild.id}!")
+            return
+
+        if negative:
+            try:
+                balance.subtract(poster, *poster_reward)
+            except balance.InsufficientFundsError:
+                logging.warning(f"Insufficient funds: Poster {poster.id}")
+                balance.set(poster, 0, False)
+            try:
+                balance.subtract(member, *voter_reward)
+            except balance.InsufficientFundsError:
+                logging.warning(f"Insufficient funds: Voter {member.id}")
+                balance.set(member, 0, False)
+            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
+        else:
+            balance.add(poster, *poster_reward)
+            balance.add(member, *voter_reward)
+            logging.debug(f"{member.id} on {partial_message.id}: {poster_reward} bobux / {voter_reward} bobux")
+
