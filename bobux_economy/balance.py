@@ -42,13 +42,13 @@ def add(member: discord.Member, amount: int, spare_change: bool):
 
     set(member, balance, balance_spare_change)
 
-def subtract(member: discord.Member, amount: int, spare_change: bool):
+def subtract(member: discord.Member, amount: int, spare_change: bool, allow_overdraft=False):
     if amount < 0:
         raise NegativeAmountError()
 
     balance, balance_spare_change = get(member)
 
-    if balance < amount or balance == amount and spare_change and not balance_spare_change:
+    if not allow_overdraft and balance < amount or balance == amount and spare_change and not balance_spare_change:
         raise InsufficientFundsError()
 
     balance -= amount

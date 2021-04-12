@@ -14,6 +14,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+import logging
 import sqlite3
 from typing import *
 
@@ -23,25 +24,94 @@ from discord.ext import commands
 import balance
 import database
 from database import connection as db
+from globals import bot
+import upvotes
 
+logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
 database.initialize(db.cursor())
 
-
-def determine_prefix(_, message: discord.Message) -> str:
-    c = db.cursor()
-    c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
-    guild_row: Optional[tuple[str]] = c.fetchone()
-    if guild_row is None:
-        return "b$"
-    else:
-        return guild_row[0]
-
-bot = commands.Bot(command_prefix=determine_prefix)
-
+logging.debug("Initializing...")
 
 @bot.event
 async def on_ready():
-    print("Ready.")
+    logging.info("Synchronizing votes...")
+    await upvotes.sync_votes()
+    logging.info("Done!")
+
+@bot.event
+async def on_message(message: discord.Message):
+    c = db.cursor()
+    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
+    memes_channel_id = (c.fetchone() or (None, ))[0]
+    if memes_channel_id is not None and message.channel.id == memes_channel_id:
+        await upvotes.add_reactions(message)
+        c.execute("""
+            INSERT INTO guilds(id, last_memes_message) VALUES (?, ?)
+                ON CONFLICT(id) DO UPDATE SET last_memes_message = excluded.last_memes_message;
+        """, (message.guild.id, message.id))
+        db.commit()
+
+    # This is required or else the entire bot ceases to function.
+    await bot.process_commands(message)
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        # This reaction was added by the bot, ignore it.
+        return
+
+    if payload.member is not None:
+        c = db.cursor()
+        c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
+        memes_channel_id = (c.fetchone() or (None, ))[0]
+
+        if payload.channel_id == memes_channel_id:
+            vote = None
+            if payload.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+                vote = upvotes.Vote.UPVOTE
+            elif payload.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+                vote = upvotes.Vote.DOWNVOTE
+
+            if vote is not None:
+                message = await bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
+
+                if payload.user_id == message.author.id:
+                    # The poster voted on their own message.
+                    await upvotes.remove_extra_reactions(message, payload.member, None)
+                    return
+
+                await upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
+                await upvotes.remove_extra_reactions(message, payload.member, vote)
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        # The removed reaction was from the bot.
+        return
+
+    if payload.guild_id is not None:
+        c = db.cursor()
+        c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
+        memes_channel_id = (c.fetchone() or (None, ))[0]
+
+        if payload.channel_id == memes_channel_id:
+            vote = None
+            if payload.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+                vote = upvotes.Vote.UPVOTE
+            elif payload.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+                vote = upvotes.Vote.DOWNVOTE
+
+            if vote is not None:
+                if (payload.message_id, vote, payload.user_id) in upvotes.recently_removed_reactions:
+                    upvotes.recently_removed_reactions.remove((payload.message_id, vote, payload.user_id))
+                    return
+
+                message = await bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
+                await upvotes.delete_vote(payload.message_id, payload.channel_id, payload.user_id, check_equal_to=vote)
+                user = bot.get_user(payload.user_id)
+                if user is None:
+                    user = await bot.fetch_user(payload.user_id)
+                await upvotes.remove_extra_reactions(message, user, None)
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
@@ -55,7 +125,7 @@ def author_can_manage_guild(ctx: commands.Context) -> bool:
 def author_has_admin_role(ctx: commands.Context) -> bool:
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
-    row: tuple[Optional[int]] = c.fetchone() or (None, )
+    row: Tuple[Optional[int]] = c.fetchone() or (None, )
     admin_role = ctx.guild.get_role(row[0])
     if admin_role is not None:
         return admin_role in ctx.author.roles
@@ -111,6 +181,19 @@ async def config_admin_role(ctx: commands.Context, role: discord.Role):
     db.commit()
     await ctx.send(f"Set admin role to {role.mention}.")
 
+@config.command(name="memes_channel")
+@commands.check(author_can_manage_guild)
+async def config_memes_channel(ctx: commands.Context, channel: discord.TextChannel):
+    """Set the channel where upvote reactions are enabled."""
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO guilds(id, memes_channel) VALUES(?, ?)
+            ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel;
+    """, (ctx.guild.id, channel.id))
+    db.commit()
+    await ctx.send(f"Set memes channel to {channel.mention}.")
+
 
 @bot.group()
 @commands.guild_only()
@@ -162,7 +245,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
 
-    balance.subtract(target, *balance.from_float(amount))
+    balance.subtract(target, *balance.from_float(amount), allow_overdraft=True)
     db.commit()
 
     await bal_check(ctx, target)
