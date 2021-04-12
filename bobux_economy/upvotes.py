@@ -74,11 +74,12 @@ async def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vo
             ON CONFLICT(message_id, member_id) DO UPDATE SET vote = excluded.vote;
     """, (message_id, channel_id, member_id, vote))
 
-    if commit: db.commit()
     logging.debug("Recorded %s by member %d on message %d.", vote.name.lower(), member_id, message_id)
 
     if event:
         await on_vote_raw(message_id, channel_id, member_id, previous_vote, vote)
+
+    if commit: db.commit()
 
 async def delete_vote(message_id: int, channel_id: int, member_id: int, check_equal_to: Optional[Vote] = None, commit: bool = True, event: bool = True):
     c = db.cursor()
@@ -187,17 +188,9 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
             return
 
         if negative:
-            try:
-                balance.subtract(poster, *poster_reward)
-            except balance.InsufficientFundsError:
-                logging.warning(f"Insufficient funds: Poster {poster.id}")
-                balance.set(poster, 0, False)
-            try:
-                balance.subtract(member, *voter_reward)
-            except balance.InsufficientFundsError:
-                logging.warning(f"Insufficient funds: Voter {member.id}")
-                balance.set(member, 0, False)
-            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
+            balance.subtract(poster, *poster_reward, allow_overdraft=True)
+            balance.add(member, *voter_reward)
+            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / {voter_reward} bobux")
         else:
             balance.add(poster, *poster_reward)
             balance.add(member, *voter_reward)

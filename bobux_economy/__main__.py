@@ -245,7 +245,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
 
-    balance.subtract(target, *balance.from_float(amount))
+    balance.subtract(target, *balance.from_float(amount), allow_overdraft=True)
     db.commit()
 
     await bal_check(ctx, target)

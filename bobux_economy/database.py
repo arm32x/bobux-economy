@@ -14,7 +14,7 @@ def initialize(cursor: sqlite3.Cursor):
         CREATE TABLE IF NOT EXISTS members(
             id INTEGER NOT NULL,
             guild_id INTEGER NOT NULL,
-            balance INTEGER NOT NULL DEFAULT 0 CHECK(balance >= 0),
+            balance INTEGER NOT NULL DEFAULT 0,
             spare_change BOOLEAN NOT NULL DEFAULT 0 CHECK(spare_change IN (0, 1)),
             
             PRIMARY KEY(id, guild_id),
