@@ -163,7 +163,7 @@ async def config(ctx: commands.Context):
         raise commands.CommandError("Please specify an option to configure.")
 
 @config.command(name="prefix")
-@commands.check(author_can_manage_guild)
+@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
 async def config_prefix(ctx: commands.Context, new_prefix: str):
     """Change the command prefix."""
 
@@ -176,7 +176,7 @@ async def config_prefix(ctx: commands.Context, new_prefix: str):
     await ctx.send(f"Updated prefix to `{new_prefix}`.")
 
 @config.command(name="admin_role")
-@commands.check(author_has_admin_role)
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def config_admin_role(ctx: commands.Context, role: discord.Role):
     """Change which role is required to modify balances."""
 
@@ -189,7 +189,7 @@ async def config_admin_role(ctx: commands.Context, role: discord.Role):
     await ctx.send(f"Set admin role to {role.mention}.")
 
 @config.command(name="memes_channel")
-@commands.check(author_can_manage_guild)
+@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
 async def config_memes_channel(ctx: commands.Context, channel: discord.TextChannel):
     """Set the channel where upvote reactions are enabled."""
 
@@ -224,7 +224,7 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
         await ctx.send(f"{target.mention}: {amount} bobux")
 
 @bal.command(name="set")
-@commands.check(author_has_admin_role)
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
     """Set someone's balance."""
 
@@ -238,7 +238,7 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
         await ctx.send(f"{target.mention}: {amount} bobux")
 
 @bal.command(name="add")
-@commands.check(author_has_admin_role)
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
     """Add bobux to someone's balance."""
 
@@ -248,7 +248,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
     await bal_check(ctx, target)
 
 @bal.command(name="sub")
-@commands.check(author_has_admin_role)
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
 
