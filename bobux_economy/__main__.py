@@ -35,9 +35,9 @@ from globals import bot
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
-database.initialize(db.cursor())
 
 logging.debug("Initializing...")
+database.migrate()
 
 @bot.event
 async def on_ready():
@@ -278,7 +278,7 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
 
 
 try:
-    with open("token.txt", "r") as token_file:
+    with open("data/token.txt", "r") as token_file:
         token = token_file.read()
         bot.run(token)
 except KeyboardInterrupt:
