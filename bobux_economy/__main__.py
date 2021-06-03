@@ -48,7 +48,10 @@ async def on_ready():
 @bot.event
 async def on_message(message: discord.Message):
     c = db.cursor()
-    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
+    c.execute("""
+        SELECT memes_channel FROM guilds WHERE id = ?
+            AND upvote_emoji IS NOT NULL AND downvote_emoji IS NOT NULL;
+    """, (message.guild.id, ))
     memes_channel_id = (c.fetchone() or (None, ))[0]
     if memes_channel_id is not None and message.channel.id == memes_channel_id:
         await upvotes.add_reactions(message)
@@ -200,6 +203,19 @@ async def config_memes_channel(ctx: commands.Context, channel: discord.TextChann
     """, (ctx.guild.id, channel.id))
     db.commit()
     await ctx.send(f"Set memes channel to {channel.mention}.")
+
+@config.command(name="vote_emojis")
+@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
+async def config_vote_emojis(ctx: commands.Context, upvote_emoji: discord.Emoji, downvote_emoji: discord.Emoji):
+    """Set the emojis used for the upvote and downvote reactions on memes."""
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO guilds(id, upvote_emoji, downvote_emoji) VALUES(?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET upvote_emoji = excluded.upvote_emoji, downvote_emoji = excluded.downvote_emoji;
+    """, (ctx.guild.id, upvote_emoji.id, downvote_emoji.id))
+    db.commit()
+    await ctx.send(f"Set upvote emoji to {upvote_emoji} and downvote emoji to {downvote_emoji}.")
 
 
 @bot.group()

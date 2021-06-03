@@ -10,13 +10,18 @@ from database import connection as db
 from globals import bot
 
 
-# TODO: Make these configurable.
-UPVOTE_EMOJI_ID = 806246359560486933
-DOWNVOTE_EMOJI_ID = 806246395723645009
+def _get_emojis(guild_id: int) -> Tuple[discord.Emoji, discord.Emoji]:
+    c = db.cursor()
+    c.execute("""
+        SELECT upvote_emoji, downvote_emoji FROM guilds WHERE id = ?;
+    """, (guild_id, ))
+    emoji_ids: Tuple[Optional[int], Optional[int]] = c.fetchone() or (None, None)
 
-def _get_emojis() -> Tuple[discord.Emoji, discord.Emoji]:
-    upvote_emoji = bot.get_emoji(UPVOTE_EMOJI_ID)
-    downvote_emoji = bot.get_emoji(DOWNVOTE_EMOJI_ID)
+    if emoji_ids[0] is None or emoji_ids[1] is None:
+        raise commands.CommandError("Could not get upvote or downvote emoji.")
+
+    upvote_emoji = bot.get_emoji(emoji_ids[0])
+    downvote_emoji = bot.get_emoji(emoji_ids[1])
 
     if upvote_emoji is None or downvote_emoji is None:
         raise commands.CommandError("Could not get upvote or downvote emoji.")
@@ -30,7 +35,7 @@ class Vote(enum.IntEnum):
 
 
 async def add_reactions(message: Union[discord.Message, discord.PartialMessage]):
-    upvote_emoji, downvote_emoji = _get_emojis()
+    upvote_emoji, downvote_emoji = _get_emojis(message.guild.id)
 
     await message.add_reaction(upvote_emoji)
     await message.add_reaction(downvote_emoji)
@@ -50,7 +55,7 @@ async def _user_reacted(message: discord.Message, user: discord.User, emoji: dis
 async def remove_extra_reactions(message: discord.Message, user: discord.User, vote: Optional[Vote]):
     logging.debug("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
 
-    upvote_emoji, downvote_emoji = _get_emojis()
+    upvote_emoji, downvote_emoji = _get_emojis(message.guild.id)
 
     if vote != Vote.UPVOTE and await _user_reacted(message, user, upvote_emoji):
         recently_removed_reactions.append((message.id, Vote.UPVOTE, user.id))
