@@ -70,11 +70,14 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
     c = db.cursor()
     if check_equal_to is not None:
         c.execute("""
-            DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ? RETURNING vote;
+            SELECT vote FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
+        """, (message_id, member_id, check_equal_to))
+        previous_vote = (c.fetchone() or (None, ))[0]
+        c.execute("""
+            DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
         """, (message_id, member_id, check_equal_to))
 
         if event:
-            previous_vote = (c.fetchone() or (None, ))[0]
             if previous_vote is not None:
                 await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
@@ -83,11 +86,14 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
 
     else:
         c.execute("""
-            DELETE FROM votes WHERE message_id = ? AND member_id = ? RETURNING vote;
+            SELECT vote FROM votes WHERE message_id = ? AND member_id = ?;
+        """, (message_id, member_id))
+        previous_vote = (c.fetchone() or (None, ))[0]
+        c.execute("""
+            DELETE FROM votes WHERE message_id = ? AND member_id = ?;
         """, (message_id, member_id))
 
         if event:
-            previous_vote = (c.fetchone() or (None, ))[0]
             if previous_vote is not None:
                 await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
@@ -98,9 +104,12 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
 async def _sync_message(message: discord.Message):
     c = db.cursor()
     c.execute("""
-        DELETE FROM votes WHERE message_id = ? AND channel_id = ? RETURNING votes.member_id, vote;
+        SELECT member_id, vote WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
     deleted_rows = c.fetchall()
+    c.execute("""
+        DELETE FROM votes WHERE message_id = ? AND channel_id = ?;
+    """, (message.id, message.channel.id))
     previous_votes = dict([ (u, Vote(v)) for (u, v) in deleted_rows ]) if deleted_rows is not None else { }
 
     await add_reactions(message)
