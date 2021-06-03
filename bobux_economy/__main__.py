@@ -1,4 +1,10 @@
 """
+bobux economy v0.3.0
+  - fix upvote and downvote reactions not appearing outside of the test server
+  - upvote and downvote reactions now use unicode emojis
+  - fixed issue where removing votes would generate infinite bobux
+  - the bot no longer adds vote reactions to its own messages
+
 bobux economy v0.2.0
   - add upvote and downvote buttons on messages in the memes channel
   - bobux are rewarded for upvotes and for voting on other people's posts
