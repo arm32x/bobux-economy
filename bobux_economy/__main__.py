@@ -1,4 +1,7 @@
 """
+bobux economy v0.3.1
+  - fix removing votes not updating balances
+
 bobux economy v0.3.0
   - fix upvote and downvote reactions not appearing outside of the test server
   - upvote and downvote reactions now use unicode emojis
