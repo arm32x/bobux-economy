@@ -163,6 +163,7 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
         difference = new_value - old_value
 
         negative = difference < 0
+        vote_removed = new is None
         poster_reward = balance.from_float(POSTER_REWARD * abs(difference))
         voter_reward = balance.from_float(VOTER_REWARD * abs(difference))
 
@@ -172,12 +173,20 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
             logging.error(f"Member {message.author.id} not found in guild {member.guild.id}!")
             return
 
-        if negative:
+        if negative and not vote_removed:
             balance.subtract(poster, *poster_reward, allow_overdraft=True)
             balance.add(member, *voter_reward)
             logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / {voter_reward} bobux")
-        else:
+        elif not negative and not vote_removed:
             balance.add(poster, *poster_reward)
             balance.add(member, *voter_reward)
             logging.debug(f"{member.id} on {partial_message.id}: {poster_reward} bobux / {voter_reward} bobux")
+        elif negative and vote_removed:
+            balance.subtract(poster, *poster_reward)
+            balance.subtract(member, *voter_reward)
+            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
+        elif not negative and vote_removed:
+            balance.add(poster, *poster_reward)
+            balance.subtract(member, *voter_reward)
+            logging.debug(f"{member.id} on {partial_message.id}: {poster_reward} bobux / -{voter_reward} bobux")
 
