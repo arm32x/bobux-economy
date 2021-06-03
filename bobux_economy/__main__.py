@@ -46,6 +46,9 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
+    if message.author == bot.user:
+        return
+
     c = db.cursor()
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id = (c.fetchone() or (None, ))[0]
