@@ -3,25 +3,14 @@ import logging
 from typing import *
 
 import discord
-from discord.ext import commands
 
 import balance
 from database import connection as db
 from globals import bot
 
-
 # TODO: Make these configurable.
-UPVOTE_EMOJI_ID = 806246359560486933
-DOWNVOTE_EMOJI_ID = 806246395723645009
-
-def _get_emojis() -> Tuple[discord.Emoji, discord.Emoji]:
-    upvote_emoji = bot.get_emoji(UPVOTE_EMOJI_ID)
-    downvote_emoji = bot.get_emoji(DOWNVOTE_EMOJI_ID)
-
-    if upvote_emoji is None or downvote_emoji is None:
-        raise commands.CommandError("Could not get upvote or downvote emoji.")
-
-    return upvote_emoji, downvote_emoji
+UPVOTE_EMOJI = "⬆️"
+DOWNVOTE_EMOJI = "⬇️"
 
 
 class Vote(enum.IntEnum):
@@ -30,16 +19,14 @@ class Vote(enum.IntEnum):
 
 
 async def add_reactions(message: Union[discord.Message, discord.PartialMessage]):
-    upvote_emoji, downvote_emoji = _get_emojis()
-
-    await message.add_reaction(upvote_emoji)
-    await message.add_reaction(downvote_emoji)
+    await message.add_reaction(UPVOTE_EMOJI)
+    await message.add_reaction(DOWNVOTE_EMOJI)
 
     logging.debug("Added upvote and downvote reactions to message %d.", message.id)
 
 recently_removed_reactions: List[Tuple[int, Vote, int]] = [ ]
 
-async def _user_reacted(message: discord.Message, user: discord.User, emoji: discord.Emoji) -> bool:
+async def _user_reacted(message: discord.Message, user: discord.User, emoji: Union[discord.Emoji, discord.PartialEmoji, str]) -> bool:
     for reaction in message.reactions:
         if reaction.emoji == emoji:
             async for reaction_user in reaction.users():
@@ -50,14 +37,12 @@ async def _user_reacted(message: discord.Message, user: discord.User, emoji: dis
 async def remove_extra_reactions(message: discord.Message, user: discord.User, vote: Optional[Vote]):
     logging.debug("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
 
-    upvote_emoji, downvote_emoji = _get_emojis()
-
-    if vote != Vote.UPVOTE and await _user_reacted(message, user, upvote_emoji):
+    if vote != Vote.UPVOTE and await _user_reacted(message, user, UPVOTE_EMOJI):
         recently_removed_reactions.append((message.id, Vote.UPVOTE, user.id))
-        await message.remove_reaction(upvote_emoji, user)
-    if vote != Vote.DOWNVOTE and await _user_reacted(message, user, downvote_emoji):
+        await message.remove_reaction(UPVOTE_EMOJI, user)
+    if vote != Vote.DOWNVOTE and await _user_reacted(message, user, DOWNVOTE_EMOJI):
         recently_removed_reactions.append((message.id, Vote.DOWNVOTE, user.id))
-        await message.remove_reaction(downvote_emoji, user)
+        await message.remove_reaction(DOWNVOTE_EMOJI, user)
 
 
 async def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True, event: bool = True):
@@ -120,11 +105,11 @@ async def _sync_message(message: discord.Message):
 
     await add_reactions(message)
     for reaction in message.reactions:
-        if not isinstance(reaction.emoji, str):
+        if isinstance(reaction.emoji, str):
             vote = None
-            if reaction.emoji.id == UPVOTE_EMOJI_ID:
+            if reaction.emoji == UPVOTE_EMOJI:
                 vote = Vote.UPVOTE
-            elif reaction.emoji.id == DOWNVOTE_EMOJI_ID:
+            elif reaction.emoji == DOWNVOTE_EMOJI:
                 vote = Vote.DOWNVOTE
 
             if vote is not None:

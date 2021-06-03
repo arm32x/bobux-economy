@@ -1,6 +1,5 @@
 """
 bobux economy v0.2.0
-  - MANUAL DATABASE MIGRATION REQUIRED
   - add upvote and downvote buttons on messages in the memes channel
   - bobux are rewarded for upvotes and for voting on other people's posts
   - bobux are removed for receiving downvotes
@@ -74,9 +73,9 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
         if payload.channel_id == memes_channel_id:
             vote = None
-            if payload.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+            if payload.emoji.name == upvotes.UPVOTE_EMOJI:
                 vote = upvotes.Vote.UPVOTE
-            elif payload.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+            elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
                 vote = upvotes.Vote.DOWNVOTE
 
             if vote is not None:
@@ -103,9 +102,9 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
         if payload.channel_id == memes_channel_id:
             vote = None
-            if payload.emoji.id == upvotes.UPVOTE_EMOJI_ID:
+            if payload.emoji.name == upvotes.UPVOTE_EMOJI:
                 vote = upvotes.Vote.UPVOTE
-            elif payload.emoji.id == upvotes.DOWNVOTE_EMOJI_ID:
+            elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
                 vote = upvotes.Vote.DOWNVOTE
 
             if vote is not None:
