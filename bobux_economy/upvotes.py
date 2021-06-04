@@ -22,7 +22,7 @@ async def add_reactions(message: Union[discord.Message, discord.PartialMessage])
     await message.add_reaction(UPVOTE_EMOJI)
     await message.add_reaction(DOWNVOTE_EMOJI)
 
-    logging.debug("Added upvote and downvote reactions to message %d.", message.id)
+    logging.info("Added upvote and downvote reactions to message %d.", message.id)
 
 recently_removed_reactions: List[Tuple[int, Vote, int]] = [ ]
 
@@ -35,7 +35,7 @@ async def _user_reacted(message: discord.Message, user: discord.User, emoji: Uni
     return False
 
 async def remove_extra_reactions(message: discord.Message, user: discord.User, vote: Optional[Vote]):
-    logging.debug("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
+    logging.info("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
 
     if vote != Vote.UPVOTE and await _user_reacted(message, user, UPVOTE_EMOJI):
         recently_removed_reactions.append((message.id, Vote.UPVOTE, user.id))
@@ -59,7 +59,7 @@ async def record_vote(message_id: int, channel_id: int, member_id: int, vote: Vo
             ON CONFLICT(message_id, member_id) DO UPDATE SET vote = excluded.vote;
     """, (message_id, channel_id, member_id, vote))
 
-    logging.debug("Recorded %s by member %d on message %d.", vote.name.lower(), member_id, message_id)
+    logging.info("Recorded %s by member %d on message %d.", vote.name.lower(), member_id, message_id)
 
     if event:
         await on_vote_raw(message_id, channel_id, member_id, previous_vote, vote)
@@ -82,7 +82,7 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
                 await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
         if commit: db.commit()
-        logging.debug("Removed vote by member %d on message %d, if it was %s.", member_id, message_id, "an upvote" if check_equal_to == Vote.UPVOTE else "a downvote")
+        logging.info("Removed vote by member %d on message %d, if it was %s.", member_id, message_id, "an upvote" if check_equal_to == Vote.UPVOTE else "a downvote")
 
     else:
         c.execute("""
@@ -98,7 +98,7 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
                 await on_vote_raw(message_id, channel_id, member_id, Vote(previous_vote), None)
 
         if commit: db.commit()
-        logging.debug("Removed vote by member %d on message %d.", member_id, message_id)
+        logging.info("Removed vote by member %d on message %d.", member_id, message_id)
 
 
 async def _sync_message(message: discord.Message):
@@ -166,7 +166,7 @@ async def on_vote_raw(message_id: int, channel_id: int, member_id: int, old: Opt
 
 async def on_vote(partial_message: discord.PartialMessage, member: discord.Member, old: Optional[Vote], new: Optional[Vote]):
     if old != new:
-        logging.debug(f"{member.id} on {partial_message.id}: {old} -> {new}")
+        logging.info(f"{member.id} on {partial_message.id}: {old} -> {new}")
 
         old_value = old or 0
         new_value = new or 0
@@ -186,17 +186,17 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
         if negative and not vote_removed:
             balance.subtract(poster, *poster_reward, allow_overdraft=True)
             balance.add(member, *voter_reward)
-            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / {voter_reward} bobux")
+            logging.info(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / {voter_reward} bobux")
         elif not negative and not vote_removed:
             balance.add(poster, *poster_reward)
             balance.add(member, *voter_reward)
-            logging.debug(f"{member.id} on {partial_message.id}: {poster_reward} bobux / {voter_reward} bobux")
+            logging.info(f"{member.id} on {partial_message.id}: {poster_reward} bobux / {voter_reward} bobux")
         elif negative and vote_removed:
             balance.subtract(poster, *poster_reward)
             balance.subtract(member, *voter_reward)
-            logging.debug(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
+            logging.info(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
         elif not negative and vote_removed:
             balance.add(poster, *poster_reward)
             balance.subtract(member, *voter_reward)
-            logging.debug(f"{member.id} on {partial_message.id}: {poster_reward} bobux / -{voter_reward} bobux")
+            logging.info(f"{member.id} on {partial_message.id}: {poster_reward} bobux / -{voter_reward} bobux")
 

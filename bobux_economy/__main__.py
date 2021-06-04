@@ -42,9 +42,9 @@ from database import connection as db
 from globals import bot
 import upvotes
 
-logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.DEBUG)
+logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 
-logging.debug("Initializing...")
+logging.info("Initializing...")
 database.migrate()
 
 @bot.event
