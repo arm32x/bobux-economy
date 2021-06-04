@@ -170,8 +170,10 @@ async def changelog(ctx: commands.Context):
 async def config(ctx: commands.Context):
     """Change the settings of the bot."""
 
-    if ctx.invoked_subcommand is None:
+    if ctx.subcommand_passed is None:
         raise commands.CommandError("Please specify an option to configure.")
+    elif ctx.invoked_subcommand is None:
+        raise commands.CommandError(f"Config option \"{ctx.subcommand_passed}\" is not found")
 
 @config.command(name="prefix")
 @commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
@@ -218,8 +220,10 @@ async def config_memes_channel(ctx: commands.Context, channel: discord.TextChann
 async def bal(ctx: commands.Context):
     """Check your balance."""
 
-    if ctx.invoked_subcommand is None:
+    if ctx.subcommand_passed is None:
         await bal_check(ctx)
+    elif ctx.invoked_subcommand is None:
+        raise commands.CommandError(f"Command \"bal {ctx.subcommand_passed}\" is not found")
 
 # TODO: Generate bobux memes to show balance.
 @bal.command(name="check")
