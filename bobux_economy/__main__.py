@@ -133,6 +133,10 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
 @bot.event
 async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    if isinstance(error, commands.errors.CheckFailure):
+        await ctx.send(f"**Error:** Insufficient permissions for command \"{ctx.command.qualified_name}\".")
+        return
+
     await ctx.send(f"**Error:** {error}")
     raise error
 
