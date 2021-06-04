@@ -1,4 +1,7 @@
 """
+bobux economy v0.4.0
+  - new votes on past messages are no longer recorded while the bot is offline
+
 bobux economy v0.3.2
   - improve various error messages
 

@@ -130,15 +130,15 @@ async def _sync_message(message: discord.Message):
 
 async def sync_votes():
     c = db.cursor()
-    c.execute("""
-        SELECT DISTINCT message_id, channel_id FROM votes;
-    """)
-    result: List[Tuple[int, int]] = c.fetchall()
-    # TODO: Parallelize this.
-    for message_id, channel_id in result:
-        channel = await bot.fetch_channel(channel_id)
-        message = await channel.fetch_message(message_id)
-        await _sync_message(message)
+    # c.execute("""
+    #     SELECT DISTINCT message_id, channel_id FROM votes;
+    # """)
+    # result: List[Tuple[int, int]] = c.fetchall()
+    # # TODO: Parallelize this.
+    # for message_id, channel_id in result:
+    #     channel = await bot.fetch_channel(channel_id)
+    #     message = await channel.fetch_message(message_id)
+    #     await _sync_message(message)
 
     c.execute("""
         SELECT memes_channel, last_memes_message FROM guilds
