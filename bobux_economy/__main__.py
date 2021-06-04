@@ -1,4 +1,7 @@
 """
+bobux economy v0.3.2
+  - improve various error messages
+
 bobux economy v0.3.1
   - fix removing votes not updating balances
 
