@@ -55,7 +55,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message: discord.Message):
-    if message.author == bot.user:
+    if message.author == bot.user or message.guild is None:
         return
 
     c = db.cursor()
