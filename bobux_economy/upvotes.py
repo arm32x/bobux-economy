@@ -104,7 +104,7 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
 async def _sync_message(message: discord.Message):
     c = db.cursor()
     c.execute("""
-        SELECT member_id, vote WHERE message_id = ? AND channel_id = ?;
+        SELECT member_id, vote FROM votes WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
     deleted_rows = c.fetchall()
     c.execute("""
@@ -136,7 +136,8 @@ async def sync_votes():
     result: List[Tuple[int, int]] = c.fetchall()
     # TODO: Parallelize this.
     for message_id, channel_id in result:
-        message = await bot.get_channel(channel_id).fetch_message(message_id)
+        channel = await bot.fetch_channel(channel_id)
+        message = await channel.fetch_message(message_id)
         await _sync_message(message)
 
     c.execute("""
