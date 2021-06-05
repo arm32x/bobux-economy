@@ -36,6 +36,7 @@ bobux economy v0.1.0
 """
 
 import logging
+import random
 import sqlite3
 from typing import *
 
@@ -58,6 +59,11 @@ async def on_ready():
     logging.info("Synchronizing votes...")
     await upvotes.sync_votes()
     logging.info("Done!")
+
+    with open("data/statuses.txt") as statuses_file:
+        statuses = statuses_file.readlines()
+        status = random.choice(statuses)
+        await bot.change_presence(activity=discord.Activity(name=status, state=status, type=cast(discord.ActivityType, discord.ActivityType.custom)))
 
 @bot.event
 async def on_message(message: discord.Message):
