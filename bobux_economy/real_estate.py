@@ -29,6 +29,7 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
     c.execute("""
         INSERT INTO purchased_channels VALUES (?, ?, ?, ?);
     """, (channel.id, buyer.id, channel.guild.id, channel.created_at))
+    db.commit()
 
 
 def get_category(guild: discord.Guild) -> discord.CategoryChannel:
