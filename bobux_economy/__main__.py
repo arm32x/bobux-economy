@@ -304,6 +304,8 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
 
 @bot.group()
 async def real_estate(ctx: commands.Context):
+    """Manage your real estate."""
+
     if ctx.invoked_subcommand is None:
         raise commands.CommandError(f"Command \"real_estate {ctx.subcommand_passed}\" is not found")
 
