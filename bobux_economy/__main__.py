@@ -334,7 +334,7 @@ async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name:
     try:
         channel_type = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type_str])
     except KeyError:
-        raise commands.CommandError(f"What the hell is a {channel_type_str} channel?")
+        raise commands.CommandError(f"Invalid channel type \"{channel_type_str}\".")
 
     channel = await real_estate.buy(channel_type, ctx.author, name)
 
