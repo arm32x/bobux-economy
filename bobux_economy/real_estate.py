@@ -14,8 +14,9 @@ CHANNEL_PRICES = {
 }
 
 async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str) -> discord.abc.GuildChannel:
-    price = CHANNEL_PRICES[channel_type]
-    if price is None:
+    try:
+        price = CHANNEL_PRICES[channel_type]
+    except KeyError:
         raise commands.CommandError(f"{channel_type.name.capitalize()} channels are not for sale.")
 
     balance.subtract(buyer, *price)

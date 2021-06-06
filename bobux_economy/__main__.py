@@ -331,8 +331,9 @@ async def real_estate_group(ctx: commands.Context):
 @commands.guild_only()
 async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name: str):
     # Once again, PyCharm can’t comprehend enums.
-    channel_type = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type_str])
-    if channel_type is None:
+    try:
+        channel_type = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type_str])
+    except KeyError:
         raise commands.CommandError(f"What the hell is a {channel_type_str} channel?")
 
     channel = await real_estate.buy(channel_type, ctx.author, name)
