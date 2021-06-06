@@ -224,6 +224,22 @@ async def config_memes_channel(ctx: commands.Context, channel: discord.TextChann
     db.commit()
     await ctx.send(f"Set memes channel to {channel.mention}.")
 
+@config.command(name="real_estate_category")
+@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
+async def config_real_estate_category(ctx: commands.Context, category: discord.CategoryChannel):
+    """
+    Set the category where channels purchased through the "real_estate" command
+    appear.
+    """
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO guilds(id, real_estate_category) VALUES(?, ?)
+            ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category;
+    """, (ctx.guild.id, category.id))
+    db.commit()
+    await ctx.send(f"Set real estate category to {category.mention}.")
+
 
 @bot.group()
 @commands.guild_only()
