@@ -7,12 +7,18 @@ import balance
 from database import connection as db
 
 
-TEXT_CHANNEL_PRICE = (150, False)
-VOICE_CHANNEL_PRICE = (100, False)
-CATEGORY_PRICE = (250, False)
+# PyCharm’s type checker is stupid and can’t figure out these enums.
+CHANNEL_PRICES = {
+    cast(discord.ChannelType, discord.ChannelType.text): (150, False),
+    cast(discord.ChannelType, discord.ChannelType.voice): (100, False)
+}
 
-async def buy(buyer: discord.Member, name: str):
-    balance.subtract(buyer, *TEXT_CHANNEL_PRICE)
+async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str):
+    price = CHANNEL_PRICES[channel_type]
+    if price is None:
+        raise commands.CommandError(f"{channel_type.name.capitalize()} channels are not for sale.")
+
+    balance.subtract(buyer, *price)
 
     category = get_category(buyer.guild)
     channel = await category.create_text_channel(name, overwrites={
