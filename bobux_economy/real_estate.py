@@ -21,9 +21,16 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
     balance.subtract(buyer, *price)
 
     category = get_category(buyer.guild)
-    channel = await category.create_text_channel(name, overwrites={
-        buyer: discord.PermissionOverwrite(manage_channels=True)
-    })
+    if channel_type is discord.ChannelType.text:
+        channel = await category.create_text_channel(name, overwrites={
+            buyer: discord.PermissionOverwrite(manage_channels=True)
+        })
+    elif channel_type is discord.ChannelType.voice:
+        channel = await category.create_voice_channel(name, overwrites={
+            buyer: discord.PermissionOverwrite(manage_channels=True)
+        })
+    else:
+        raise commands.CommandError(f"Could not create {channel_type.name} channel.")
 
     c = db.cursor()
     c.execute("""
