@@ -13,7 +13,7 @@ CHANNEL_PRICES = {
     cast(discord.ChannelType, discord.ChannelType.voice): (100, False)
 }
 
-async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str):
+async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str) -> discord.abc.GuildChannel:
     price = CHANNEL_PRICES[channel_type]
     if price is None:
         raise commands.CommandError(f"{channel_type.name.capitalize()} channels are not for sale.")
@@ -27,9 +27,11 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
 
     c = db.cursor()
     c.execute("""
-        INSERT INTO purchased_channels VALUES (?, ?, ?, ?);
+        INSERT INTO purchased_channels(id, owner_id, guild_id, purchase_time) VALUES (?, ?, ?, ?);
     """, (channel.id, buyer.id, channel.guild.id, channel.created_at))
     db.commit()
+
+    return channel
 
 
 def get_category(guild: discord.Guild) -> discord.CategoryChannel:

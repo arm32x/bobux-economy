@@ -46,6 +46,7 @@ import balance
 import database
 from database import connection as db
 from globals import bot
+import real_estate
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
@@ -318,12 +319,25 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
     await bal_check(ctx, recipient)
 
 
-@bot.group()
-async def real_estate(ctx: commands.Context):
+# Renamed to avoid shadowing the "real_estate" module.
+@bot.group(name="real_estate")
+async def real_estate_group(ctx: commands.Context):
     """Manage your real estate."""
 
     if ctx.invoked_subcommand is None:
         raise commands.CommandError(f"Command \"real_estate {ctx.subcommand_passed}\" is not found")
+
+@real_estate_group.command(name="buy")
+@commands.guild_only()
+async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name: str):
+    # Once again, PyCharm can’t comprehend enums.
+    channel_type = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type_str])
+    if channel_type is None:
+        raise commands.CommandError(f"What the hell is a {channel_type_str} channel?")
+
+    channel = await real_estate.buy(channel_type, ctx.author, name)
+
+    await ctx.send(f"{ctx.author.mention} bought {channel.mention}.")
 
 
 try:
