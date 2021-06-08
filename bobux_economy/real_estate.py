@@ -41,6 +41,30 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
 
     return channel
 
+async def sell(channel: Union[discord.TextChannel, discord.VoiceChannel], seller: discord.Member):
+    c = db.cursor()
+    c.execute("""
+        SELECT owner_id FROM purchased_channels WHERE id = ?;
+    """, (channel.id, ))
+    owner_id: Optional[int] = (c.fetchone() or (None, ))[0]
+
+    if owner_id != seller.id:
+        raise commands.CommandError(f"Only the owner of {channel.mention} can sell it.")
+
+    try:
+        selling_price = balance.from_float(balance.to_float(*CHANNEL_PRICES[channel.type]) / 2)
+    except KeyError:
+        raise commands.CommandError(f"{channel.type.name.capitalize()} channels are not for sale, how did you get one?")
+
+    c.execute("""
+        DELETE FROM purchased_channels WHERE id = ?;
+    """, (channel.id, ))
+    db.commit()
+
+    await channel.delete(reason=f"Sold by {seller.name}.")
+
+    balance.add(seller, *selling_price)
+
 
 def get_category(guild: discord.Guild) -> discord.CategoryChannel:
     c = db.cursor()

@@ -338,7 +338,14 @@ async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name:
 
     channel = await real_estate.buy(channel_type, ctx.author, name)
 
-    await ctx.send(f"{ctx.author.mention} bought {channel.mention}.")
+    await ctx.send(f"Bought {channel.mention}.)
+
+@real_estate_group.command(name="sell")
+@commands.guild_only()
+async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextChannel, discord.VoiceChannel]):
+    await real_estate.sell(channel, ctx.author)
+
+    await ctx.send(f"Sold.")
 
 
 try:
