@@ -336,16 +336,16 @@ async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name:
     except KeyError:
         raise commands.CommandError(f"Invalid channel type \"{channel_type_str}\".")
 
-    channel = await real_estate.buy(channel_type, ctx.author, name)
+    channel, price = await real_estate.buy(channel_type, ctx.author, name)
 
-    await ctx.send(f"Bought {channel.mention}.)
+    await ctx.send(f"Bought {channel.mention} for {balance.to_string(*price)}.")
 
 @real_estate_group.command(name="sell")
 @commands.guild_only()
 async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextChannel, discord.VoiceChannel]):
-    await real_estate.sell(channel, ctx.author)
+    price = await real_estate.sell(channel, ctx.author)
 
-    await ctx.send(f"Sold.")
+    await ctx.send(f"Sold for {balance.to_string(*price)}.")
 
 
 try:

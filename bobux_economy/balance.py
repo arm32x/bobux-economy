@@ -64,3 +64,10 @@ def from_float(amount: float) -> (int, bool):
 
 def to_float(amount: int, spare_change: bool) -> float:
     return amount + (0.5 if spare_change else 0)
+
+
+def to_string(amount: int, spare_change: bool) -> str:
+    if spare_change:
+        return f"{amount} bobux and some spare change"
+    else:
+        return f"{amount} bobux"

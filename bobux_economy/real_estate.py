@@ -13,7 +13,7 @@ CHANNEL_PRICES = {
     cast(discord.ChannelType, discord.ChannelType.voice): (100, False)
 }
 
-async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str) -> discord.abc.GuildChannel:
+async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: str) -> Tuple[discord.abc.GuildChannel, Tuple[int, bool]]:
     try:
         price = CHANNEL_PRICES[channel_type]
     except KeyError:
@@ -39,7 +39,7 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
     """, (channel.id, buyer.id, channel.guild.id, channel.created_at))
     db.commit()
 
-    return channel
+    return channel, price
 
 async def sell(channel: Union[discord.TextChannel, discord.VoiceChannel], seller: discord.Member):
     c = db.cursor()
@@ -64,6 +64,8 @@ async def sell(channel: Union[discord.TextChannel, discord.VoiceChannel], seller
     await channel.delete(reason=f"Sold by {seller.name}.")
 
     balance.add(seller, *selling_price)
+
+    return selling_price
 
 
 def get_category(guild: discord.Guild) -> discord.CategoryChannel:
