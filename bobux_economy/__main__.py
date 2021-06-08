@@ -260,10 +260,7 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
     target = target or ctx.author
 
     amount, spare_change = balance.get(target)
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}")
 
 @bal.command(name="set")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
@@ -274,10 +271,7 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
     balance.set(target, amount, spare_change)
     db.commit()
 
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    await bal_check(ctx, target)
 
 @bal.command(name="add")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
