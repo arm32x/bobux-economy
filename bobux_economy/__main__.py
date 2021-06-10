@@ -321,20 +321,28 @@ async def real_estate_group(ctx: commands.Context):
 
 @real_estate_group.command(name="buy")
 @commands.guild_only()
-async def real_estate_buy(ctx: commands.Context, channel_type_str: str, *, name: str):
+async def real_estate_buy(ctx: commands.Context, channel_type: str, *, name: str):
+    """
+    Buy a text channel or a voice channel.
+
+    Text channels cost 150 bobux and voice channels cost 100 bobux.
+    """
+
     # Once again, PyCharm can’t comprehend enums.
     try:
-        channel_type = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type_str])
+        channel_type_enum = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type])
     except KeyError:
-        raise commands.CommandError(f"Invalid channel type \"{channel_type_str}\".")
+        raise commands.CommandError(f"Invalid channel type \"{channel_type}\".")
 
-    channel, price = await real_estate.buy(channel_type, ctx.author, name)
+    channel, price = await real_estate.buy(channel_type_enum, ctx.author, name)
 
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*price)}.")
 
 @real_estate_group.command(name="sell")
 @commands.guild_only()
 async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextChannel, discord.VoiceChannel]):
+    """Sell a channel that you own for half of its purchase price."""
+
     price = await real_estate.sell(channel, ctx.author)
 
     await ctx.send(f"Sold for {balance.to_string(*price)}.")
