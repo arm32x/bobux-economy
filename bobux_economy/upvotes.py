@@ -23,8 +23,7 @@ def message_eligible(message: discord.Message) -> bool:
     memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
     if (memes_channel_id is not None and
-        message.channel.id == memes_channel_id and
-        (len(message.attachments) > 0 or len(message.embeds) > 0)):
+        message.channel.id == memes_channel_id):
         return True
     else:
         return False
