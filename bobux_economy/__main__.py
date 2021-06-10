@@ -1,4 +1,13 @@
 """
+bobux economy v0.5.1
+  - remove the requirement for posts in the memes channel to have an attachment
+    or embed
+
+bobux economy v0.5.0
+  - you can now buy text channels and voice channels with bobux
+  - posts in the memes channel without an attachment or embed no longer have
+    upvote or downvote buttons
+
 bobux economy v0.4.0
   - new votes on past messages are no longer recorded while the bot is offline
 
@@ -35,6 +44,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+from datetime import datetime
 import logging
 import sqlite3
 from typing import *
@@ -46,6 +56,7 @@ import balance
 import database
 from database import connection as db
 from globals import bot
+import real_estate
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
@@ -64,11 +75,9 @@ async def on_message(message: discord.Message):
     if message.author == bot.user or message.guild is None:
         return
 
-    c = db.cursor()
-    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
-    memes_channel_id = (c.fetchone() or (None, ))[0]
-    if memes_channel_id is not None and message.channel.id == memes_channel_id:
+    if upvotes.message_eligible(message):
         await upvotes.add_reactions(message)
+        c = db.cursor()
         c.execute("""
             INSERT INTO guilds(id, last_memes_message) VALUES (?, ?)
                 ON CONFLICT(id) DO UPDATE SET last_memes_message = excluded.last_memes_message;
@@ -224,6 +233,22 @@ async def config_memes_channel(ctx: commands.Context, channel: discord.TextChann
     db.commit()
     await ctx.send(f"Set memes channel to {channel.mention}.")
 
+@config.command(name="real_estate_category")
+@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
+async def config_real_estate_category(ctx: commands.Context, category: discord.CategoryChannel):
+    """
+    Set the category where channels purchased through the "real_estate" command
+    appear.
+    """
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO guilds(id, real_estate_category) VALUES(?, ?)
+            ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category;
+    """, (ctx.guild.id, category.id))
+    db.commit()
+    await ctx.send(f"Set real estate category to {category.mention}.")
+
 
 @bot.group()
 @commands.guild_only()
@@ -243,10 +268,7 @@ async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = No
     target = target or ctx.author
 
     amount, spare_change = balance.get(target)
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}")
 
 @bal.command(name="set")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
@@ -257,10 +279,7 @@ async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
     balance.set(target, amount, spare_change)
     db.commit()
 
-    if spare_change:
-        await ctx.send(f"{target.mention}: {amount} bobux and some spare change")
-    else:
-        await ctx.send(f"{target.mention}: {amount} bobux")
+    await bal_check(ctx, target)
 
 @bal.command(name="add")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
@@ -300,6 +319,58 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
 
     await bal_check(ctx)
     await bal_check(ctx, recipient)
+
+
+# Renamed to avoid shadowing the "real_estate" module.
+@bot.group(name="real_estate")
+async def real_estate_group(ctx: commands.Context):
+    """Manage your real estate."""
+
+    if ctx.invoked_subcommand is None:
+        raise commands.CommandError(f"Command \"real_estate {ctx.subcommand_passed}\" is not found")
+
+@real_estate_group.command(name="buy")
+@commands.guild_only()
+async def real_estate_buy(ctx: commands.Context, channel_type: str, *, name: str):
+    """
+    Buy a text channel or a voice channel.
+
+    Text channels cost 150 bobux and voice channels cost 100 bobux.
+    """
+
+    # Once again, PyCharm can’t comprehend enums.
+    try:
+        channel_type_enum = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type])
+    except KeyError:
+        raise commands.CommandError(f"Invalid channel type \"{channel_type}\".")
+
+    channel, price = await real_estate.buy(channel_type_enum, ctx.author, name)
+
+    await ctx.send(f"Bought {channel.mention} for {balance.to_string(*price)}.")
+
+@real_estate_group.command(name="sell")
+@commands.guild_only()
+async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextChannel, discord.VoiceChannel]):
+    """Sell a channel that you own for half of its purchase price."""
+
+    price = await real_estate.sell(channel, ctx.author)
+
+    await ctx.send(f"Sold for {balance.to_string(*price)}.")
+
+@real_estate_group.command(name="check")
+async def real_estate_check(ctx: commands.Context):
+    """Check your current real estate holdings."""
+
+    c = db.cursor()
+    c.execute("""
+        SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
+    """, (ctx.author.id, ))
+    results: List[int, datetime] = c.fetchall()
+
+    message_parts = [f"{ctx.author.mention}:"]
+    for channel_id, purchase_time in results:
+        message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+    await ctx.send("\n".join(message_parts))
 
 
 try:

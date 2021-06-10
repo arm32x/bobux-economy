@@ -3,7 +3,7 @@ import sqlite3
 import yoyo
 
 
-connection = sqlite3.connect("data/bobux.db")
+connection = sqlite3.connect("data/bobux.db", detect_types=sqlite3.PARSE_DECLTYPES)
 
 def migrate():
     yoyo_backend = yoyo.get_backend("sqlite:///data/bobux.db")

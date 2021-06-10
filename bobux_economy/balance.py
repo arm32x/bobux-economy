@@ -61,3 +61,13 @@ def subtract(member: discord.Member, amount: int, spare_change: bool, allow_over
 
 def from_float(amount: float) -> (int, bool):
     return math.floor(amount), not amount.is_integer()
+
+def to_float(amount: int, spare_change: bool) -> float:
+    return amount + (0.5 if spare_change else 0)
+
+
+def to_string(amount: int, spare_change: bool) -> str:
+    if spare_change:
+        return f"{amount} bobux and some spare change"
+    else:
+        return f"{amount} bobux"
