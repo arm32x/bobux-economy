@@ -65,11 +65,9 @@ async def on_message(message: discord.Message):
     if message.author == bot.user or message.guild is None:
         return
 
-    c = db.cursor()
-    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
-    memes_channel_id = (c.fetchone() or (None, ))[0]
-    if memes_channel_id is not None and message.channel.id == memes_channel_id:
+    if upvotes.message_eligible(message):
         await upvotes.add_reactions(message)
+        c = db.cursor()
         c.execute("""
             INSERT INTO guilds(id, last_memes_message) VALUES (?, ?)
                 ON CONFLICT(id) DO UPDATE SET last_memes_message = excluded.last_memes_message;

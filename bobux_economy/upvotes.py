@@ -17,6 +17,17 @@ class Vote(enum.IntEnum):
     UPVOTE = 1
     DOWNVOTE = -1
 
+def message_eligible(message: discord.Message) -> bool:
+    c = db.cursor()
+    c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
+    memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
+
+    if (memes_channel_id is not None and
+        message.channel.id == memes_channel_id and
+        (len(message.attachments) > 0 or len(message.embeds) > 0)):
+        return True
+    else:
+        return False
 
 async def add_reactions(message: Union[discord.Message, discord.PartialMessage]):
     await message.add_reaction(UPVOTE_EMOJI)
