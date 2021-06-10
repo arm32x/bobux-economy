@@ -1,4 +1,9 @@
 """
+bobux economy v0.5.0
+  - you can now buy text channels and voice channels with bobux
+  - posts in the memes channel without an attachment or embed no longer have
+    upvote or downvote buttons
+
 bobux economy v0.4.0
   - new votes on past messages are no longer recorded while the bot is offline
 
