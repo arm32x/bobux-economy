@@ -1,4 +1,8 @@
 """
+bobux economy v0.5.1
+  - remove the requirement for posts in the memes channel to have an attachment
+    or embed
+
 bobux economy v0.5.0
   - you can now buy text channels and voice channels with bobux
   - posts in the memes channel without an attachment or embed no longer have
