@@ -35,6 +35,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+from datetime import datetime
 import logging
 import sqlite3
 from typing import *
@@ -346,6 +347,21 @@ async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextCha
     price = await real_estate.sell(channel, ctx.author)
 
     await ctx.send(f"Sold for {balance.to_string(*price)}.")
+
+@real_estate_group.command(name="check")
+async def real_estate_check(ctx: commands.Context):
+    """Check your current real estate holdings."""
+
+    c = db.cursor()
+    c.execute("""
+        SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
+    """, (ctx.author.id, ))
+    results: List[int, datetime] = c.fetchall()
+
+    message_parts = [f"{ctx.author.mention}:"]
+    for channel_id, purchase_time in results:
+        message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+    await ctx.send("\n".join(message_parts))
 
 
 try:
