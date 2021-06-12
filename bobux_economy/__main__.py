@@ -262,13 +262,25 @@ async def bal(ctx: commands.Context):
 
 # TODO: Generate bobux memes to show balance.
 @bal.command(name="check")
-async def bal_check(ctx: commands.Context, target: Optional[discord.Member] = None):
+async def bal_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]] = None):
     """Check the balance of yourself or someone else."""
 
-    target = target or ctx.author
+    if isinstance(target, str) and target == "@everyone":
+        c = db.cursor()
+        c.execute("""
+            SELECT id, balance, spare_change FROM members WHERE guild_id = ?;
+        """, (ctx.guild.id, ))
+        results: Tuple[int, int, bool] = c.fetchall()
 
-    amount, spare_change = balance.get(target)
-    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}")
+        message_parts = []
+        for member_id, amount, spare_change in results:
+            message_parts.append(f"<@{member_id}>: {balance.to_string(amount, spare_change)}")
+        await ctx.send("\n".join(message_parts))
+    else:
+        target = target or ctx.author
+
+        amount, spare_change = balance.get(target)
+        await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}")
 
 @bal.command(name="set")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
