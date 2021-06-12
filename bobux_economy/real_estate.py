@@ -36,7 +36,7 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
             raise commands.CommandError(f"Could not create {channel_type.name} channel.")
     except discord.Forbidden:
         balance.add(buyer, *price)
-        raise commands.CommandError(f"The bot does not have Manage Channel permissions.")
+        raise commands.CommandError(f"The bot must have Administrator permissions.")
 
     c = db.cursor()
     c.execute("""
