@@ -5,6 +5,7 @@ from discord.ext import commands
 
 import balance
 from database import connection as db
+from globals import bot
 
 
 # PyCharm’s type checker is stupid and can’t figure out these enums.
@@ -22,16 +23,20 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
     balance.subtract(buyer, *price)
 
     category = get_category(buyer.guild)
-    if channel_type is discord.ChannelType.text:
-        channel = await category.create_text_channel(name, overwrites={
-            buyer: discord.PermissionOverwrite(manage_channels=True)
-        })
-    elif channel_type is discord.ChannelType.voice:
-        channel = await category.create_voice_channel(name, overwrites={
-            buyer: discord.PermissionOverwrite(manage_channels=True)
-        })
-    else:
-        raise commands.CommandError(f"Could not create {channel_type.name} channel.")
+    permissions = {
+        buyer: discord.PermissionOverwrite(manage_channels=True, manage_permissions=True),
+        bot.user: discord.PermissionOverwrite(view_channel=True, send_messages=False)
+    }
+    try:
+        if channel_type is discord.ChannelType.text:
+            channel = await category.create_text_channel(name, overwrites=permissions)
+        elif channel_type is discord.ChannelType.voice:
+            channel = await category.create_voice_channel(name, overwrites=permissions)
+        else:
+            raise commands.CommandError(f"Could not create {channel_type.name} channel.")
+    except discord.Forbidden:
+        balance.add(buyer, *price)
+        raise commands.CommandError(f"The bot does not have Manage Channel permissions.")
 
     c = db.cursor()
     c.execute("""
@@ -56,12 +61,13 @@ async def sell(channel: Union[discord.TextChannel, discord.VoiceChannel], seller
     except KeyError:
         raise commands.CommandError(f"{channel.type.name.capitalize()} channels are not for sale, how did you get one?")
 
+    await channel.delete(reason=f"Sold by {seller.name}.")
+
     c.execute("""
         DELETE FROM purchased_channels WHERE id = ?;
     """, (channel.id, ))
     db.commit()
 
-    await channel.delete(reason=f"Sold by {seller.name}.")
 
     balance.add(seller, *selling_price)
 
