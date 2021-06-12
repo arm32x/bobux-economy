@@ -24,7 +24,8 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
 
     category = get_category(buyer.guild)
     permissions = {
-        buyer: discord.PermissionOverwrite(manage_channels=True, manage_permissions=True),
+        # The bot can’t grant permission to manage permissions unless it is Administrator.
+        buyer: discord.PermissionOverwrite(manage_channels=True),
         bot.user: discord.PermissionOverwrite(view_channel=True, send_messages=False)
     }
     try:
