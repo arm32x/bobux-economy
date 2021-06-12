@@ -1,4 +1,8 @@
 """
+bobux economy v0.5.3
+  - fix permissions issue with real estate (for real this time)
+  - fuck you discord
+
 bobux economy v0.5.2
   - fix permissions issue with real estate
   - 'b$bal check @everyone' now works as expected
