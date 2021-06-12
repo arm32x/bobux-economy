@@ -1,4 +1,8 @@
 """
+bobux economy v0.5.2
+  - fix permissions issue with real estate
+  - 'b$bal check @everyone' now works as expected
+
 bobux economy v0.5.1
   - remove the requirement for posts in the memes channel to have an attachment
     or embed
