@@ -1,4 +1,8 @@
 """
+bobux economy v0.5.4
+  - you can now check the real estate holdings of other people
+  - you can now set config options back to none
+
 bobux economy v0.5.3
   - fix permissions issue with real estate (for real this time)
   - fuck you discord
