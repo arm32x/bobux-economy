@@ -378,19 +378,38 @@ async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextCha
     await ctx.send(f"Sold for {balance.to_string(*price)}.")
 
 @real_estate_group.command(name="check")
-async def real_estate_check(ctx: commands.Context):
-    """Check your current real estate holdings."""
+async def real_estate_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]]):
+    """Check the real estate holdings of yourself or someone else."""
 
-    c = db.cursor()
-    c.execute("""
-        SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
-    """, (ctx.author.id, ))
-    results: List[int, datetime] = c.fetchall()
+    if isinstance(target, str) and target == "@everyone":
+        c = db.cursor()
+        c.execute("""
+            SELECT id, owner_id, purchase_time FROM purchased_channels WHERE guild_id = ?
+                ORDER BY owner_id;
+        """, (ctx.guild.id, ))
+        results: List[int, int, datetime] = c.fetchall()
 
-    message_parts = [f"{ctx.author.mention}:"]
-    for channel_id, purchase_time in results:
-        message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
-    await ctx.send("\n".join(message_parts))
+        message_parts = []
+        current_owner_id = None
+        for channel_id, owner_id, purchase_time in results:
+            if owner_id != current_owner_id:
+                message_parts.append(f"<@{owner_id}>:")
+                current_owner_id = owner_id
+            message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+        await ctx.send("\n".join(message_parts))
+    else:
+        target = target or ctx.author
+
+        c = db.cursor()
+        c.execute("""
+            SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
+        """, (target.id, ))
+        results: List[int, datetime] = c.fetchall()
+
+        message_parts = [f"{target.mention}:"]
+        for channel_id, purchase_time in results:
+            message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+        await ctx.send("\n".join(message_parts))
 
 
 try:
