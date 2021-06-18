@@ -217,45 +217,54 @@ async def config_prefix(ctx: commands.Context, new_prefix: str):
 
 @config.command(name="admin_role")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def config_admin_role(ctx: commands.Context, role: discord.Role):
+async def config_admin_role(ctx: commands.Context, role: Optional[discord.Role]):
     """Change which role is required to modify balances."""
+
+    role_id = role.id if role is not None else None
+    role_mention = role.mention if role is not None else "None"
 
     c = db.cursor()
     c.execute("""
         INSERT INTO guilds(id, admin_role) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role;
-    """, (ctx.guild.id, role.id))
+    """, (ctx.guild.id, role_id))
     db.commit()
-    await ctx.send(f"Set admin role to {role.mention}.")
+    await ctx.send(f"Set admin role to {role_mention}.")
 
 @config.command(name="memes_channel")
 @commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
-async def config_memes_channel(ctx: commands.Context, channel: discord.TextChannel):
+async def config_memes_channel(ctx: commands.Context, channel: Optional[discord.TextChannel]):
     """Set the channel where upvote reactions are enabled."""
+
+    channel_id = channel.id if channel is not None else None
+    channel_mention = channel.mention if channel is not None else "None"
 
     c = db.cursor()
     c.execute("""
         INSERT INTO guilds(id, memes_channel) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel;
-    """, (ctx.guild.id, channel.id))
+    """, (ctx.guild.id, channel_id))
     db.commit()
-    await ctx.send(f"Set memes channel to {channel.mention}.")
+    await ctx.send(f"Set memes channel to {channel_mention}.")
 
 @config.command(name="real_estate_category")
 @commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
-async def config_real_estate_category(ctx: commands.Context, category: discord.CategoryChannel):
+async def config_real_estate_category(ctx: commands.Context, category: Optional[discord.CategoryChannel]):
     """
     Set the category where channels purchased through the "real_estate" command
     appear.
     """
 
+    category_id = category.id if category is not None else None
+    category_mention = category.mention if category is not None else "None"
+
     c = db.cursor()
     c.execute("""
         INSERT INTO guilds(id, real_estate_category) VALUES(?, ?)
             ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category;
-    """, (ctx.guild.id, category.id))
+    """, (ctx.guild.id, category_id))
     db.commit()
-    await ctx.send(f"Set real estate category to {category.mention}.")
+    await ctx.send(f"Set real estate category to {category_mention}.")
 
 
 @bot.group()
