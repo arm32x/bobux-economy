@@ -28,6 +28,7 @@ def set(member: discord.Member, amount: int, spare_change: bool):
         INSERT INTO members(id, guild_id, balance, spare_change) VALUES(?, ?, ?, ?)
             ON CONFLICT(id, guild_id) DO UPDATE SET balance = excluded.balance, spare_change = excluded.spare_change;
     """, (member.id, member.guild.id, amount, spare_change))
+    db.commit()
 
 def add(member: discord.Member, amount: int, spare_change: bool):
     if amount < 0:
@@ -60,7 +61,15 @@ def subtract(member: discord.Member, amount: int, spare_change: bool, allow_over
 
 
 def from_float(amount: float) -> (int, bool):
-    return math.floor(amount), not amount.is_integer()
+    return int(amount), not amount.is_integer()
+
+def from_float_floor(amount: float) -> (int, bool):
+    rounded = math.floor(amount * 2) / 2
+    return from_float(rounded)
+
+def from_float_ceil(amount: float) -> (int, bool):
+    rounded = math.ceil(amount * 2) / 2
+    return from_float(rounded)
 
 def to_float(amount: int, spare_change: bool) -> float:
     return amount + (0.5 if spare_change else 0)

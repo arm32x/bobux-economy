@@ -61,6 +61,7 @@ import logging
 import sqlite3
 from typing import *
 
+import asciichartpy as asciichart
 import discord
 from discord.ext import commands
 
@@ -69,6 +70,7 @@ import database
 from database import connection as db
 from globals import bot
 import real_estate
+import stocks
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
@@ -324,7 +326,7 @@ async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
 
     await bal_check(ctx, target)
 
-@bal.command(name="sub")
+@bal.command(name="sub", aliases=["subtract"])
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
     """Remove bobux from someone's balance."""
@@ -423,6 +425,133 @@ async def real_estate_check(ctx: commands.Context, target: Optional[Union[discor
         for channel_id, purchase_time in results:
             message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
         await ctx.send("\n".join(message_parts))
+
+
+@bot.group()
+async def stock(ctx: commands.Context):
+    """Buy and sell stocks, cryptocurrencies, and foreign exchange currencies."""
+
+    if ctx.invoked_subcommand is None:
+        raise commands.CommandError(f"Command \"stock {ctx.subcommand_passed}\" is not found")
+
+@stock.command(name="check")
+async def stock_check(ctx: commands.Context, target: Optional[discord.Member], ticker_symbol: Optional[str]):
+    """Check your current stock holdings."""
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    target = target or ctx.author
+
+    if ticker_symbol is not None:
+        await ctx.send(f"{target.mention}: {stocks.to_string(ticker_symbol, stocks.get(target, ticker_symbol))}")
+    else:
+        message_parts = [f"{target.mention}:"]
+        for ticker_symbol, units in stocks.get_all(target).items():
+            message_parts.append(stocks.to_string(ticker_symbol, units))
+        await ctx.send("\n".join(message_parts))
+
+@stock.command(name="set")
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
+async def stock_set(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
+    """Set someone's holdings in a particular stock."""
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    stocks.set(target, ticker_symbol, amount)
+    await stock_check(ctx, target, ticker_symbol)
+
+@stock.command(name="add")
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
+async def stock_add(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
+    """Add to someone's holdings in a particular stock."""
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    stocks.add(target, ticker_symbol, amount)
+    await stock_check(ctx, target, ticker_symbol)
+
+@stock.command(name="sub", aliases=["subtract"])
+@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
+async def stock_sub(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
+    """Subtract from someone's holdings in a particular stock."""
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    stocks.subtract(target, ticker_symbol, amount)
+    await stock_check(ctx, target, ticker_symbol)
+
+@stock.command(name="buy")
+async def stock_buy(ctx: commands.Context, ticker_symbol: str, amount: float, units_or_bobux: Optional[str]):
+    """
+    Buy a stock.
+
+    Examples:
+        Buy one share of Microsoft stock:
+            b$stock buy MSFT 1
+        Buy 100 bobux worth of Bitcoin:
+            b$stock buy BTC 100 bobux
+    """
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    units_or_bobux = units_or_bobux or "units"
+    if units_or_bobux not in ["units", "bobux"]:
+        raise commands.CommandError("Please specify either 'units' or 'bobux' (default 'units').")
+
+    if units_or_bobux == "bobux":
+        units, cost = stocks.buy(ctx.author, ticker_symbol, balance.from_float(amount))
+    else:
+        units, cost = stocks.buy(ctx.author, ticker_symbol, amount)
+
+    await ctx.send(f"Bought {units} {ticker_symbol.upper()} for {balance.to_string(*cost)}.")
+
+@stock.command(name="sell")
+async def stock_sell(ctx: commands.Context, ticker_symbol: str, amount: Optional[float], units_or_bobux: Optional[str]):
+    """
+    Sell a stock.
+
+    Examples:
+        Sell one share of Microsoft stock:
+            b$stock sell MSFT 1
+        Sell all of your Bitcoin:
+            b$stock sell BTC
+    """
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    if amount is None and units_or_bobux is not None:
+        raise commands.CommandError("Cannot specify 'units' or 'bobux' if selling all of a stock.")
+
+    units_or_bobux = units_or_bobux or "units"
+    if units_or_bobux not in ["units", "bobux"]:
+        raise commands.CommandError("Please specify either 'units' or 'bobux' (default 'units').")
+
+    if units_or_bobux == "bobux":
+        units, proceeds = stocks.sell(ctx.author, ticker_symbol, balance.from_float(amount))
+    else:
+        units, proceeds = stocks.sell(ctx.author, ticker_symbol, amount)
+
+    await ctx.send(f"Sold {units} {ticker_symbol.upper()} for {balance.to_string(*proceeds)}.")
+
+@stock.command(name="chart", aliases=["graph", "price"])
+async def stock_chart(ctx: commands.Context, ticker_symbol: str):
+    """
+    Show a chart of historical prices for a stock.
+
+    Note that the current price might be different than what the chart shows.
+    """
+
+    stocks.validate_ticker_symbol(ticker_symbol)
+
+    current_price = stocks.get_price(ticker_symbol)
+    price_history = stocks.get_price_history(ticker_symbol)
+    if current_price is None or price_history is None:
+        raise commands.CommandError(f"Ticker symbol '{ticker_symbol}' does not exist.")
+
+    header = f"{ticker_symbol.upper()} – currently {round(current_price, 2)} bobux per unit:"
+    chart = asciichart.plot(price_history, { "height": 10 })
+
+    await ctx.send(f"{header}\n```\n{chart}\n```")
 
 
 try:
