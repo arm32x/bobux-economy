@@ -124,10 +124,10 @@ def buy(buyer: discord.Member, ticker_symbol: str, units_or_total_price: Union[f
     else:
         raise TypeError("Amount must be either float or (int, bool).")
 
-    balance.subtract(buyer, *balance.from_float_ceil(total_price))
+    balance.subtract(buyer, *balance.from_float_round(total_price))
     add(buyer, ticker_symbol, units)
 
-    return units, balance.from_float_ceil(total_price)
+    return units, balance.from_float_round(total_price)
 
 def sell(seller: discord.Member, ticker_symbol: str, units_or_total_price: Optional[Union[float, Tuple[int, bool]]]) -> Tuple[float, Tuple[int, bool]]:
     ticker_symbol = ticker_symbol.upper()
@@ -150,9 +150,9 @@ def sell(seller: discord.Member, ticker_symbol: str, units_or_total_price: Optio
         raise TypeError("Amount must be either float or (int, bool).")
 
     subtract(seller, ticker_symbol, units)
-    balance.add(seller, *balance.from_float_floor(total_price))
+    balance.add(seller, *balance.from_float_round(total_price))
 
-    return units, balance.from_float_floor(total_price)
+    return units, balance.from_float_round(total_price)
 
 
 def to_string(ticker_symbol: str, units: float) -> str:
@@ -162,7 +162,7 @@ def to_string(ticker_symbol: str, units: float) -> str:
     if price_per_unit is None:
         return f"{units} {ticker_symbol}"
 
-    value_in_bobux = balance.from_float_floor(price_per_unit * units)
+    value_in_bobux = balance.from_float_round(price_per_unit * units)
 
     return f"{units} {ticker_symbol} (worth {balance.to_string(*value_in_bobux)})"
 
