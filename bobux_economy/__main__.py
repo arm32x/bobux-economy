@@ -1,4 +1,9 @@
 """
+bobux economy v0.6.0 - the stonks update
+  - you can now buy and sell stocks, cryptocurrencies, and real-world currencies
+    using 'b$stock' commands
+  - 'b$real_estate' is now interpreted as 'b$real_estate check'
+
 bobux economy v0.5.4
   - you can now check the real estate holdings of other people
   - you can now set config options back to none
