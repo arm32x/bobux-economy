@@ -127,7 +127,7 @@ def buy(buyer: discord.Member, ticker_symbol: str, units_or_total_price: Union[f
     balance.subtract(buyer, *balance.from_float_round(total_price))
     add(buyer, ticker_symbol, units)
 
-    return units, balance.from_float_round(total_price)
+    return units, balance.from_float_ceil(total_price)
 
 def sell(seller: discord.Member, ticker_symbol: str, units_or_total_price: Optional[Union[float, Tuple[int, bool]]]) -> Tuple[float, Tuple[int, bool]]:
     ticker_symbol = ticker_symbol.upper()
