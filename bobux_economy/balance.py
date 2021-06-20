@@ -71,6 +71,10 @@ def from_float_ceil(amount: float) -> (int, bool):
     rounded = math.ceil(amount * 2) / 2
     return from_float(rounded)
 
+def from_float_round(amount: float) -> (int, bool):
+    rounded = round(amount * 2) / 2
+    return from_float(rounded)
+
 def to_float(amount: int, spare_change: bool) -> float:
     return amount + (0.5 if spare_change else 0)
 
