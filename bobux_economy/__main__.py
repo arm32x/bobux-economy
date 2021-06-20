@@ -1,4 +1,8 @@
 """
+bobux economy v0.6.1 - the stonks update
+  - fix issue with stocks
+  - adjust rounding of stock prices
+
 bobux economy v0.6.0 - the stonks update
   - you can now buy and sell stocks, cryptocurrencies, and real-world currencies
     using 'b$stock' commands
