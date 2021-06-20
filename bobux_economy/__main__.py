@@ -1,4 +1,7 @@
 """
+bobux economy v0.6.2 - the stonks update
+  - fix infinite money glitch with stocks
+
 bobux economy v0.6.1 - the stonks update
   - fix issue with stocks
   - adjust rounding of stock prices
