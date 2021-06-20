@@ -83,7 +83,7 @@ def set(member: discord.Member, ticker_symbol: str, units: float):
     else:
         c.execute("""
             INSERT INTO stock_holdings(ticker_symbol, owner_id, guild_id, amount) VALUES(?, ?, ?, ?)
-                ON CONFLICT DO UPDATE SET amount = excluded.amount;
+                ON CONFLICT(ticker_symbol, owner_id, guild_id) DO UPDATE SET amount = excluded.amount;
         """, (ticker_symbol, member.id, member.guild.id, units))
     db.commit()
 
