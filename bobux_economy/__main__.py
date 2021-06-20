@@ -361,7 +361,9 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
 async def real_estate_group(ctx: commands.Context):
     """Manage your real estate."""
 
-    if ctx.invoked_subcommand is None:
+    if ctx.subcommand_passed is None:
+        await real_estate_check(ctx)
+    elif ctx.invoked_subcommand is None:
         raise commands.CommandError(f"Command \"real_estate {ctx.subcommand_passed}\" is not found")
 
 @real_estate_group.command(name="buy")
@@ -393,7 +395,7 @@ async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextCha
     await ctx.send(f"Sold for {balance.to_string(*price)}.")
 
 @real_estate_group.command(name="check")
-async def real_estate_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]]):
+async def real_estate_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]] = None):
     """Check the real estate holdings of yourself or someone else."""
 
     if isinstance(target, str) and target == "@everyone":
@@ -431,11 +433,13 @@ async def real_estate_check(ctx: commands.Context, target: Optional[Union[discor
 async def stock(ctx: commands.Context):
     """Buy and sell stocks, cryptocurrencies, and foreign exchange currencies."""
 
-    if ctx.invoked_subcommand is None:
+    if ctx.subcommand_passed is None:
+        await stock_check(ctx)
+    elif ctx.invoked_subcommand is None:
         raise commands.CommandError(f"Command \"stock {ctx.subcommand_passed}\" is not found")
 
 @stock.command(name="check")
-async def stock_check(ctx: commands.Context, target: Optional[discord.Member], ticker_symbol: Optional[str]):
+async def stock_check(ctx: commands.Context, target: Optional[discord.Member] = None, ticker_symbol: Optional[str] = None):
     """Check your current stock holdings."""
 
     stocks.validate_ticker_symbol(ticker_symbol)
