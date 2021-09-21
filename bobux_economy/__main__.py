@@ -213,19 +213,6 @@ async def config(ctx: commands.Context):
     elif ctx.invoked_subcommand is None:
         raise commands.CommandError(f"Config option \"{ctx.subcommand_passed}\" is not found")
 
-@config.command(name="prefix")
-@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
-async def config_prefix(ctx: commands.Context, new_prefix: str):
-    """Change the command prefix."""
-
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO guilds(id, prefix) VALUES(?, ?)
-            ON CONFLICT(id) DO UPDATE SET prefix = excluded.prefix;
-    """, (ctx.guild.id, new_prefix))
-    db.commit()
-    await ctx.send(f"Updated prefix to `{new_prefix}`.")
-
 @config.command(name="admin_role")
 @commands.check(cast("commands._CheckPredicate", author_has_admin_role))
 async def config_admin_role(ctx: commands.Context, role: Optional[discord.Role]):
