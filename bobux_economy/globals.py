@@ -1,18 +1,14 @@
-from typing import *
-
 import discord
-from discord.ext import commands
-
-from database import connection as db
+from discord_slash import SlashCommand
 
 
-def determine_prefix(_, message: discord.Message) -> str:
-    c = db.cursor()
-    c.execute("SELECT prefix FROM guilds WHERE id = ?;", (message.guild.id, ))
-    guild_row: Optional[Tuple[str]] = c.fetchone()
-    if guild_row is None:
-        return "b$"
-    else:
-        return guild_row[0]
+class CommandError(RuntimeError):
+    """An Exception type for user errors in commands, such as invalid input"""
 
-bot: commands.Bot = commands.Bot(command_prefix=determine_prefix)
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+client = discord.Client()
+
+slash = SlashCommand(client, sync_commands=True)

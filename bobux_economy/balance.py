@@ -1,18 +1,18 @@
 import math
 
 import discord
-from discord.ext import commands
 
 from database import connection as db
+from globals import CommandError
 
 
-class InsufficientFundsError(commands.CommandError):
+class InsufficientFundsError(CommandError):
     def __init__(self):
-        super().__init__("Insufficient funds.")
+        super().__init__("Insufficient funds")
 
-class NegativeAmountError(commands.CommandError):
+class NegativeAmountError(CommandError):
     def __init__(self):
-        super().__init__("Amount must not be negative.")
+        super().__init__("Amount must not be negative")
 
 
 def get(member: discord.Member) -> (int, bool):
