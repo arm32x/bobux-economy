@@ -1,6 +1,11 @@
 token.txt
 bobux.db*
 
+# Random IntelliJ files created by plugins
+.idea/ClojureProjectResolveSettings.xml
+.idea/discord.xml
+.idea/runConfigurations.xml
+
 # Created by https://www.toptal.com/developers/gitignore/api/intellij,python
 # Edit at https://www.toptal.com/developers/gitignore?templates=intellij,python
 
