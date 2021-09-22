@@ -1,9 +1,14 @@
-from typing import *
-
 import discord
-from discord.ext import commands
-
-from database import connection as db
+from discord_slash import SlashCommand
 
 
-bot: commands.Bot = commands.Bot(command_prefix="b$")
+class CommandError(RuntimeError):
+    """An Exception type for user errors in commands, such as invalid input"""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+client = discord.Client()
+
+slash = SlashCommand(client, sync_commands=True)

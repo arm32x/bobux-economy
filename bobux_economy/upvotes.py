@@ -6,7 +6,7 @@ import discord
 
 import balance
 from database import connection as db
-from globals import bot
+from globals import client
 
 # TODO: Make these configurable.
 UPVOTE_EMOJI = "⬆️"
@@ -133,7 +133,7 @@ async def _sync_message(message: discord.Message):
 
             if vote is not None:
                 async for user in reaction.users():
-                    if user != bot.user:
+                    if user != client.user:
                         await record_vote(message.id, message.channel.id, user.id, vote, commit=False, event=False)
                         await on_vote_raw(message.id, message.channel.id, user.id, previous_votes.get(user.id), vote)
     db.commit()
@@ -156,7 +156,7 @@ async def sync_votes():
     """)
     result = c.fetchall()
     for channel_id, last_memes_message in result:
-        channel = bot.get_channel(channel_id)
+        channel = client.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
             async for message in channel.history(after=discord.Object(last_memes_message)):
                 await _sync_message(message)
@@ -166,7 +166,7 @@ POSTER_REWARD = 5.0
 VOTER_REWARD = 2.5
 
 async def on_vote_raw(message_id: int, channel_id: int, member_id: int, old: Optional[Vote], new: Optional[Vote]):
-    channel = bot.get_channel(channel_id)
+    channel = client.get_channel(channel_id)
     partial_message = channel.get_partial_message(message_id)
     member = channel.guild.get_member(member_id) or await channel.guild.fetch_member(member_id)
     if member is None:

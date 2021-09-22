@@ -5,10 +5,10 @@ from typing import *
 
 import pandas
 import discord
-from discord.ext import commands
 from yahoo_fin import stock_info
 
 import balance
+from globals import CommandError
 from database import connection as db
 
 
@@ -102,7 +102,7 @@ def subtract(member: discord.Member, ticker_symbol: str, units: float, allow_ove
     current_amount = get(member, ticker_symbol)
 
     if not allow_overdraft and current_amount < units:
-        raise commands.CommandError(f"Insufficient holdings in '{ticker_symbol.upper()}'.")
+        raise CommandError(f"Insufficient holdings in ‘{ticker_symbol.upper()}’")
 
     set(member, ticker_symbol, current_amount - units)
 
@@ -112,7 +112,7 @@ def buy(buyer: discord.Member, ticker_symbol: str, units_or_total_price: Union[f
 
     price_per_unit = get_price(ticker_symbol)
     if price_per_unit is None:
-        raise commands.CommandError(f"Ticker symbol '{ticker_symbol}' does not exist.")
+        raise CommandError(f"Ticker symbol ‘{ticker_symbol}’ does not exist")
 
     if isinstance(units_or_total_price, float):
         units = units_or_total_price
@@ -134,7 +134,7 @@ def sell(seller: discord.Member, ticker_symbol: str, units_or_total_price: Optio
 
     price_per_unit = get_price(ticker_symbol)
     if price_per_unit is None:
-        raise commands.CommandError(f"Ticker symbol '{ticker_symbol}' does not exist.")
+        raise CommandError(f"Ticker symbol ‘{ticker_symbol}’ does not exist")
 
     if units_or_total_price is None:
         units_or_total_price = get(seller, ticker_symbol)
@@ -168,4 +168,4 @@ def to_string(ticker_symbol: str, units: float) -> str:
 
 def validate_ticker_symbol(ticker_symbol: Optional[str]):
     if ticker_symbol is not None and not ticker_symbol.isalpha():
-        raise commands.CommandError(f"Invalid ticker symbol '{ticker_symbol.upper()}'.")
+        raise CommandError(f"Invalid ticker symbol ‘{ticker_symbol.upper()}’")

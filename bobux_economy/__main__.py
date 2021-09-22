@@ -68,12 +68,13 @@ from typing import *
 
 import asciichartpy as asciichart
 import discord
-from discord.ext import commands
+from discord_slash import SlashContext, SlashCommandOptionType as OptionType
+from discord_slash.utils.manage_commands import create_option
 
 import balance
 import database
 from database import connection as db
-from globals import bot
+from globals import client, slash, CommandError
 import real_estate
 import stocks
 import upvotes
@@ -83,15 +84,15 @@ logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=loggin
 logging.info("Initializing...")
 database.migrate()
 
-@bot.event
+@client.event
 async def on_ready():
     logging.info("Synchronizing votes...")
     await upvotes.sync_votes()
     logging.info("Done!")
 
-@bot.event
+@client.event
 async def on_message(message: discord.Message):
-    if message.author == bot.user or message.guild is None:
+    if message.author == client.user or message.guild is None:
         return
 
     if upvotes.message_eligible(message):
@@ -103,12 +104,9 @@ async def on_message(message: discord.Message):
         """, (message.guild.id, message.id))
         db.commit()
 
-    # This is required or else the entire bot ceases to function.
-    await bot.process_commands(message)
-
-@bot.event
+@client.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    if payload.user_id == bot.user.id:
+    if payload.user_id == client.user.id:
         # This reaction was added by the bot, ignore it.
         return
 
@@ -125,7 +123,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 vote = upvotes.Vote.DOWNVOTE
 
             if vote is not None:
-                message = await bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
+                message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
 
                 if payload.user_id == message.author.id:
                     # The poster voted on their own message.
@@ -135,9 +133,9 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
                 await upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
                 await upvotes.remove_extra_reactions(message, payload.member, vote)
 
-@bot.event
+@client.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    if payload.user_id == bot.user.id:
+    if payload.user_id == client.user.id:
         # The removed reaction was from the bot.
         return
 
@@ -158,65 +156,69 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
                     upvotes.recently_removed_reactions.remove((payload.message_id, vote, payload.user_id))
                     return
 
-                message = await bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
+                message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
                 await upvotes.delete_vote(payload.message_id, payload.channel_id, payload.user_id, check_equal_to=vote)
-                user = bot.get_user(payload.user_id)
+                user = client.get_user(payload.user_id)
                 if user is None:
-                    user = await bot.fetch_user(payload.user_id)
+                    user = await client.fetch_user(payload.user_id)
                 await upvotes.remove_extra_reactions(message, user, None)
 
-@bot.event
-async def on_command_error(ctx: commands.Context, error: commands.CommandError):
-    if isinstance(error, commands.errors.CheckFailure):
-        await ctx.send(f"**Error:** Insufficient permissions for command \"{ctx.command.qualified_name}\".")
-        return
-
-    await ctx.send(f"**Error:** {error}")
-    raise error
+@client.event
+async def on_slash_command_error(ctx: SlashContext, ex: Exception):
+    if isinstance(ex, CommandError):
+        logging.info("Sent error feedback")
+        await ctx.send(f"**Error:** {ex}", hidden=True)
+    raise ex
 
 
-def author_can_manage_guild(ctx: commands.Context) -> bool:
-    return bool(ctx.author.permissions_in(ctx.channel).manage_guild)
+def check_author_can_manage_guild(ctx: SlashContext):
+    if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
+        raise CommandError("You must have Manage Server permissions to use this command")
 
-def author_has_admin_role(ctx: commands.Context) -> bool:
+def check_author_has_admin_role(ctx: SlashContext):
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
     row: Tuple[Optional[int]] = c.fetchone() or (None, )
     admin_role = ctx.guild.get_role(row[0])
     if admin_role is not None:
-        return admin_role in ctx.author.roles
+        if not admin_role in ctx.author.roles:
+            raise CommandError(f"You must have the {admin_role.mention} role to use this command")
     else:
-        return author_can_manage_guild(ctx)
+        check_author_can_manage_guild(ctx)
 
 
-@bot.command()
-async def version(ctx: commands.Context):
-    """Check the version of the bot."""
-
+@slash.slash(
+    name="version",
+    description="Check the version of the bot"
+)
+async def version(ctx: SlashContext):
     if ctx.invoked_subcommand is None:
         await ctx.send(__doc__.strip().partition("\n")[0].strip())
 
-@bot.command()
-async def changelog(ctx: commands.Context):
-    """Show the changelog of the bot."""
-
+@slash.slash(
+    name="changelog",
+    description="Show the changelog of the bot"
+)
+async def changelog(ctx: SlashContext):
     await ctx.send(f"```{__doc__.strip()}```")
 
 
-@bot.group()
-@commands.guild_only()
-async def config(ctx: commands.Context):
-    """Change the settings of the bot."""
-
-    if ctx.subcommand_passed is None:
-        raise commands.CommandError("Please specify an option to configure.")
-    elif ctx.invoked_subcommand is None:
-        raise commands.CommandError(f"Config option \"{ctx.subcommand_passed}\" is not found")
-
-@config.command(name="admin_role")
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def config_admin_role(ctx: commands.Context, role: Optional[discord.Role]):
-    """Change which role is required to modify balances."""
+@slash.subcommand(
+    base="config",
+    base_description="Change the settings of the bot",
+    name="admin_role",
+    description="Change which role is required to modify balances",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role to set, or blank to remove",
+            required=False
+        )
+    ]
+)
+async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = None):
+    check_author_can_manage_guild(ctx)
 
     role_id = role.id if role is not None else None
     role_mention = role.mention if role is not None else "None"
@@ -227,12 +229,26 @@ async def config_admin_role(ctx: commands.Context, role: Optional[discord.Role])
             ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role;
     """, (ctx.guild.id, role_id))
     db.commit()
-    await ctx.send(f"Set admin role to {role_mention}.")
+    await ctx.send(f"Set admin role to {role_mention}")
 
-@config.command(name="memes_channel")
-@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
-async def config_memes_channel(ctx: commands.Context, channel: Optional[discord.TextChannel]):
-    """Set the channel where upvote reactions are enabled."""
+@slash.subcommand(
+    base="config",
+    base_description="Change the settings of the bot",
+    name="memes_channel",
+    description="Set the channel where upvote reactions are enabled",
+    options=[
+        create_option(
+            name="channel",
+            option_type=OptionType.CHANNEL,
+            description="The channel to set, or blank to remove",
+            required=False
+        )
+    ]
+)
+async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.GuildChannel] = None):
+    check_author_can_manage_guild(ctx)
+    if channel is not None and not isinstance(channel, discord.TextChannel):
+        raise CommandError("The memes channel must be a text channel")
 
     channel_id = channel.id if channel is not None else None
     channel_mention = channel.mention if channel is not None else "None"
@@ -243,18 +259,29 @@ async def config_memes_channel(ctx: commands.Context, channel: Optional[discord.
             ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel;
     """, (ctx.guild.id, channel_id))
     db.commit()
-    await ctx.send(f"Set memes channel to {channel_mention}.")
+    await ctx.send(f"Set memes channel to {channel_mention}")
 
-@config.command(name="real_estate_category")
-@commands.check(cast("commands._CheckPredicate", author_can_manage_guild))
-async def config_real_estate_category(ctx: commands.Context, category: Optional[discord.CategoryChannel]):
-    """
-    Set the category where channels purchased through the "real_estate" command
-    appear.
-    """
+@slash.subcommand(
+    base="config",
+    base_description="Change the settings of the bot",
+    name="real_estate_category",
+    description="Set the category where purchased real estate channels appear",
+    options=[
+        create_option(
+            name="category",
+            option_type=OptionType.CHANNEL,
+            description="The category to set, or blank to remove",
+            required=False
+        )
+    ]
+)
+async def config_real_estate_category(ctx: SlashContext, category: Optional[discord.abc.GuildChannel] = None):
+    check_author_can_manage_guild(ctx)
+    if category is not None and not isinstance(category, discord.CategoryChannel):
+        raise CommandError("The real estate category must be a category")
 
     category_id = category.id if category is not None else None
-    category_mention = category.mention if category is not None else "None"
+    category_mention = f"‘{category.name}’" if category is not None else "None"
 
     c = db.cursor()
     c.execute("""
@@ -262,80 +289,168 @@ async def config_real_estate_category(ctx: commands.Context, category: Optional[
             ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category;
     """, (ctx.guild.id, category_id))
     db.commit()
-    await ctx.send(f"Set real estate category to {category_mention}.")
+    await ctx.send(f"Set real estate category to {category_mention}")
 
 
-@bot.group()
-@commands.guild_only()
-async def bal(ctx: commands.Context):
-    """Check your balance."""
+@slash.subcommand(
+    base="bal",
+    base_description="Manage account balances",
+    subcommand_group="check",
+    subcommand_group_description="Check the balance of yourself or someone else",
+    name="self",
+    description="Check your balance",
+)
+async def bal_check_self(ctx: SlashContext):
+    await bal_check_user.invoke(ctx, ctx.author)
 
-    if ctx.subcommand_passed is None:
-        await bal_check(ctx)
-    elif ctx.invoked_subcommand is None:
-        raise commands.CommandError(f"Command \"bal {ctx.subcommand_passed}\" is not found")
+@slash.subcommand(
+    base="bal",
+    subcommand_group="check",
+    subcommand_group_description="Check the balance of yourself or someone else",
+    name="user",
+    description="Check someone’s balance",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user to check the balance of",
+            required=True
+        )
+    ]
+)
+async def bal_check_user(ctx: SlashContext, target: discord.Member):
+    amount, spare_change = balance.get(target)
+    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}", hidden=True)
 
-# TODO: Generate bobux memes to show balance.
-@bal.command(name="check")
-async def bal_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]] = None):
-    """Check the balance of yourself or someone else."""
-
-    if isinstance(target, str) and target == "@everyone":
-        c = db.cursor()
-        c.execute("""
+@slash.subcommand(
+    base="bal",
+    base_description="Manage account balances",
+    subcommand_group="check",
+    subcommand_group_description="Check the balance of yourself or someone else",
+    name="everyone",
+    description="Check the balance of everyone in this server"
+)
+async def bal_check_everyone(ctx: SlashContext):
+    c = db.cursor()
+    c.execute("""
             SELECT id, balance, spare_change FROM members WHERE guild_id = ?;
         """, (ctx.guild.id, ))
-        results: Tuple[int, int, bool] = c.fetchall()
+    results: Tuple[int, int, bool] = c.fetchall()
 
-        message_parts = []
-        for member_id, amount, spare_change in results:
-            message_parts.append(f"<@{member_id}>: {balance.to_string(amount, spare_change)}")
-        await ctx.send("\n".join(message_parts))
-    else:
-        target = target or ctx.author
+    message_parts = []
+    for member_id, amount, spare_change in results:
+        message_parts.append(f"<@{member_id}>: {balance.to_string(amount, spare_change)}")
+    await ctx.send("\n".join(message_parts), hidden=True)
 
-        amount, spare_change = balance.get(target)
-        await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}")
+@slash.subcommand(
+    base="bal",
+    base_description="Manage account balances",
+    name="set",
+    description="Set someone’s balance",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user to set the balance of",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The new balance of the target",
+            required=True
+        )
+    ]
+)
+async def bal_set(ctx: SlashContext, target: discord.Member, amount: float):
+    check_author_has_admin_role(ctx)
 
-@bal.command(name="set")
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def bal_set(ctx: commands.Context, target: discord.Member, amount: float):
-    """Set someone's balance."""
-
-    amount, spare_change = balance.from_float(amount)
+    amount, spare_change = balance.from_float(float(amount))
     balance.set(target, amount, spare_change)
     db.commit()
 
-    await bal_check(ctx, target)
+    await ctx.send(f"Set the balance of {target.mention} to {balance.to_string(amount, spare_change)}")
 
-@bal.command(name="add")
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def bal_add(ctx: commands.Context, target: discord.Member, amount: float):
-    """Add bobux to someone's balance."""
+@slash.subcommand(
+    base="bal",
+    base_description="Manage account balances",
+    name="add",
+    description="Add bobux to someone’s balance",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user whose balance will be added to",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount to add to the target’s balance",
+            required=True
+        )
+    ]
+)
+async def bal_add(ctx: SlashContext, target: discord.Member, amount: float):
+    check_author_has_admin_role(ctx)
 
-    balance.add(target, *balance.from_float(amount))
+    amount, spare_change = balance.from_float(float(amount))
+    balance.add(target, amount, spare_change)
     db.commit()
 
-    await bal_check(ctx, target)
+    await ctx.send(f"Added {balance.to_string(amount, spare_change)} to {target.mention}’s balance")
 
-@bal.command(name="sub", aliases=["subtract"])
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def bal_sub(ctx: commands.Context, target: discord.Member, amount: float):
-    """Remove bobux from someone's balance."""
+@slash.subcommand(
+    base="bal",
+    base_description="Manage account balances",
+    name="subtract",
+    description="Subtract bobux from someone’s balance",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user whose balance will be subtracted from",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount to subtract from the target’s balance",
+            required=True
+        )
+    ]
+)
+async def bal_subtract(ctx: SlashContext, target: discord.Member, amount: float):
+    check_author_has_admin_role(ctx)
 
-    balance.subtract(target, *balance.from_float(amount), allow_overdraft=True)
+    amount, spare_change = balance.from_float(float(amount))
+    balance.subtract(target, amount, spare_change, allow_overdraft=True)
     db.commit()
 
-    await bal_check(ctx, target)
+    await ctx.send(f"Subtracted {balance.to_string(amount, spare_change)} from {target.mention}’s balance")
 
 
-@bot.command()
-@commands.guild_only()
-async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
-    """Pay someone."""
-
+@slash.slash(
+    name="pay",
+    description="Transfer bobux to someone",
+    options=[
+        create_option(
+            name="recipient",
+            option_type=OptionType.USER,
+            description="The user to transfer bobux to",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount to transfer to the recipient",
+            required=True
+        )
+    ]
+)
+async def pay(ctx: SlashContext, recipient: discord.Member, amount: float):
     try:
-        amount, spare_change = balance.from_float(amount)
+        amount, spare_change = balance.from_float(float(amount))
         balance.subtract(ctx.author, amount, spare_change)
         balance.add(recipient, amount, spare_change)
     except sqlite3.Error:
@@ -344,96 +459,178 @@ async def pay(ctx: commands.Context, recipient: discord.Member, amount: float):
     else:
         db.commit()
 
-    await bal_check(ctx)
-    await bal_check(ctx, recipient)
+    await ctx.send(f"Transferred {balance.to_string(amount, spare_change)} to {recipient.mention}")
 
 
-# Renamed to avoid shadowing the "real_estate" module.
-@bot.group(name="real_estate")
-async def real_estate_group(ctx: commands.Context):
-    """Manage your real estate."""
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    subcommand_group="buy",
+    subcommand_group_description="Buy a real estate channel",
+    name="text",
+    description=f"Buy a text channel for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}",
+    options=[
+        create_option(
+            name="name",
+            option_type=OptionType.STRING,
+            description="The name of the purchased channel",
+            required=True
+        )
+    ]
+)
+async def real_estate_buy_text(ctx: SlashContext, name: str):
+    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.text), ctx.author, name)
 
-    if ctx.subcommand_passed is None:
-        await real_estate_check(ctx)
-    elif ctx.invoked_subcommand is None:
-        raise commands.CommandError(f"Command \"real_estate {ctx.subcommand_passed}\" is not found")
+    await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}")
 
-@real_estate_group.command(name="buy")
-@commands.guild_only()
-async def real_estate_buy(ctx: commands.Context, channel_type: str, *, name: str):
-    """
-    Buy a text channel or a voice channel.
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    subcommand_group="buy",
+    subcommand_group_description="Buy a real estate channel",
+    name="voice",
+    description=f"Buy a voice channel for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}",
+    options=[
+        create_option(
+            name="name",
+            option_type=OptionType.STRING,
+            description="The name of the purchased channel",
+            required=True
+        )
+    ]
+)
+async def real_estate_buy_voice(ctx: SlashContext, name: str):
+    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.voice), ctx.author, name)
 
-    Text channels cost 150 bobux and voice channels cost 100 bobux.
-    """
+    await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}")
 
-    # Once again, PyCharm can’t comprehend enums.
-    try:
-        channel_type_enum = cast(Optional[discord.ChannelType], discord.ChannelType[channel_type])
-    except KeyError:
-        raise commands.CommandError(f"Invalid channel type \"{channel_type}\".")
-
-    channel, price = await real_estate.buy(channel_type_enum, ctx.author, name)
-
-    await ctx.send(f"Bought {channel.mention} for {balance.to_string(*price)}.")
-
-@real_estate_group.command(name="sell")
-@commands.guild_only()
-async def real_estate_sell(ctx: commands.Context, channel: Union[discord.TextChannel, discord.VoiceChannel]):
-    """Sell a channel that you own for half of its purchase price."""
-
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    name="sell",
+    description="Sell one of your channels for half its purchase price",
+    options=[
+        create_option(
+            name="channel",
+            option_type=OptionType.CHANNEL,
+            description="The channel to sell",
+            required=True
+        )
+    ]
+)
+async def real_estate_sell(ctx: SlashContext, channel: Union[discord.TextChannel, discord.VoiceChannel]):
     price = await real_estate.sell(channel, ctx.author)
 
-    await ctx.send(f"Sold for {balance.to_string(*price)}.")
+    await ctx.send(f"Sold ‘{channel.name}’ for {balance.to_string(*price)}")
 
-@real_estate_group.command(name="check")
-async def real_estate_check(ctx: commands.Context, target: Optional[Union[discord.Member, str]] = None):
-    """Check the real estate holdings of yourself or someone else."""
 
-    if isinstance(target, str) and target == "@everyone":
-        c = db.cursor()
-        c.execute("""
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    subcommand_group="check",
+    subcommand_group_description="Check the real estate holdings of yourself or someone else",
+    name="self",
+    description="Check your real estate holdings"
+)
+async def real_estate_check_self(ctx: SlashContext):
+    await real_estate_check_user.invoke(ctx, ctx.author)
+
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    subcommand_group="check",
+    subcommand_group_description="Check the real estate holdings of yourself or someone else",
+    name="user",
+    description="Check someone’s real estate holdings",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user to check the real estate holdings of",
+            required=True
+        )
+    ]
+)
+async def real_estate_check_user(ctx: SlashContext, target: discord.Member):
+    c = db.cursor()
+    c.execute("""
+            SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
+        """, (target.id, ))
+    results: List[int, datetime] = c.fetchall()
+
+    message_parts = [f"{target.mention}:"]
+    for channel_id, purchase_time in results:
+        message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+    await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.subcommand(
+    base="real_estate",
+    base_description="Manage your real estate",
+    subcommand_group="check",
+    subcommand_group_description="Check the real estate holdings of yourself or someone else",
+    name="everyone",
+    description="Check the real estate holdings of everyone in this server"
+)
+async def real_estate_check_everyone(ctx: SlashContext):
+    c = db.cursor()
+    c.execute("""
             SELECT id, owner_id, purchase_time FROM purchased_channels WHERE guild_id = ?
                 ORDER BY owner_id;
         """, (ctx.guild.id, ))
-        results: List[int, int, datetime] = c.fetchall()
+    results: List[int, int, datetime] = c.fetchall()
 
-        message_parts = []
-        current_owner_id = None
-        for channel_id, owner_id, purchase_time in results:
-            if owner_id != current_owner_id:
-                message_parts.append(f"<@{owner_id}>:")
-                current_owner_id = owner_id
-            message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
-        await ctx.send("\n".join(message_parts))
-    else:
-        target = target or ctx.author
-
-        c = db.cursor()
-        c.execute("""
-            SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
-        """, (target.id, ))
-        results: List[int, datetime] = c.fetchall()
-
-        message_parts = [f"{target.mention}:"]
-        for channel_id, purchase_time in results:
-            message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
-        await ctx.send("\n".join(message_parts))
+    message_parts = []
+    current_owner_id = None
+    for channel_id, owner_id, purchase_time in results:
+        if owner_id != current_owner_id:
+            message_parts.append(f"<@{owner_id}>:")
+            current_owner_id = owner_id
+        message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
+    await ctx.send("\n".join(message_parts), hidden=True)
 
 
-@bot.group()
-async def stock(ctx: commands.Context):
-    """Buy and sell stocks, cryptocurrencies, and foreign exchange currencies."""
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    subcommand_group="check",
+    subcommand_group_description="Check the stock holdings of yourself or someone else",
+    name="self",
+    description="Check your current stock holdings",
+    options=[
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="If set, only check the holdings for this ticker symbol",
+            required=False
+        )
+    ]
+)
+async def stock_check_self(ctx: SlashContext, ticker_symbol: Optional[str] = None):
+    await stock_check_user.invoke(ctx, ctx.author, ticker_symbol)
 
-    if ctx.subcommand_passed is None:
-        await stock_check(ctx)
-    elif ctx.invoked_subcommand is None:
-        raise commands.CommandError(f"Command \"stock {ctx.subcommand_passed}\" is not found")
-
-@stock.command(name="check")
-async def stock_check(ctx: commands.Context, target: Optional[discord.Member] = None, ticker_symbol: Optional[str] = None):
-    """Check your current stock holdings."""
-
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    subcommand_group="check",
+    subcommand_group_description="Check the stock holdings of yourself or someone else",
+    name="user",
+    description="Check someone’s current stock holdings",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user to check the stock holdings of",
+            required=True
+        ),
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="If set, only check the target’s holdings in this stock",
+            required=False
+        )
+    ]
+)
+async def stock_check_user(ctx: SlashContext, target: discord.Member, ticker_symbol: Optional[str] = None):
     stocks.validate_ticker_symbol(ticker_symbol)
 
     target = target or ctx.author
@@ -444,116 +641,229 @@ async def stock_check(ctx: commands.Context, target: Optional[discord.Member] = 
         message_parts = [f"{target.mention}:"]
         for ticker_symbol, units in stocks.get_all(target).items():
             message_parts.append(stocks.to_string(ticker_symbol, units))
-        await ctx.send("\n".join(message_parts))
+        await ctx.send("\n".join(message_parts), hidden=True)
 
-@stock.command(name="set")
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def stock_set(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
-    """Set someone's holdings in a particular stock."""
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="set",
+    description="Set someone’s holdings in a stock",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user to set the stock holdings of",
+            required=True
+        ),
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to set",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount in units of the stock to set",
+            required=True
+        )
+    ]
+)
+async def stock_set(ctx: SlashContext, target: discord.Member, ticker_symbol: str, amount: float):
+    check_author_has_admin_role(ctx)
 
     stocks.validate_ticker_symbol(ticker_symbol)
 
     stocks.set(target, ticker_symbol, amount)
-    await stock_check(ctx, target, ticker_symbol)
+    await ctx.send(f"Set {target.mention}’s holdings in {ticker_symbol} to {stocks.to_string(ticker_symbol, amount)}")
 
-@stock.command(name="add")
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def stock_add(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
-    """Add to someone's holdings in a particular stock."""
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="add",
+    description="Add to someone’s holdings in a stock",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user whose stock holdings will be added to",
+            required=True
+        ),
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to add",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount in units of the stock to add",
+            required=True
+        )
+    ]
+)
+async def stock_add(ctx: SlashContext, target: discord.Member, ticker_symbol: str, amount: float):
+    check_author_has_admin_role(ctx)
 
     stocks.validate_ticker_symbol(ticker_symbol)
 
     stocks.add(target, ticker_symbol, amount)
-    await stock_check(ctx, target, ticker_symbol)
+    await ctx.send(f"Added {stocks.to_string(ticker_symbol, amount)} to {target.mention}’s holdings")
 
-@stock.command(name="sub", aliases=["subtract"])
-@commands.check(cast("commands._CheckPredicate", author_has_admin_role))
-async def stock_sub(ctx: commands.Context, target: discord.Member, ticker_symbol: str, amount: float):
-    """Subtract from someone's holdings in a particular stock."""
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="subtract",
+    description="Subtract from someone’s holdings in a stock",
+    options=[
+        create_option(
+            name="target",
+            option_type=OptionType.USER,
+            description="The user whose stock holdings will be subtracted from",
+            required=True
+        ),
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to subtract",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount in units of the stock to subtract",
+            required=True
+        )
+    ]
+)
+async def stock_subtract(ctx: SlashContext, target: discord.Member, ticker_symbol: str, amount: float):
+    check_author_has_admin_role(ctx)
 
     stocks.validate_ticker_symbol(ticker_symbol)
 
     stocks.subtract(target, ticker_symbol, amount)
-    await stock_check(ctx, target, ticker_symbol)
+    await ctx.send(f"Subtracted {stocks.to_string(ticker_symbol, amount)} from {target.mention}’s holdings")
 
-@stock.command(name="buy")
-async def stock_buy(ctx: commands.Context, ticker_symbol: str, amount: float, units_or_bobux: Optional[str]):
-    """
-    Buy a stock.
-
-    Examples:
-        Buy one share of Microsoft stock:
-            b$stock buy MSFT 1
-        Buy 100 bobux worth of Bitcoin:
-            b$stock buy BTC 100 bobux
-    """
-
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="buy",
+    description="Buy a stock",
+    options=[
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to buy",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount to buy",
+            required=True
+        ),
+        create_option(
+            name="units_or_bobux",
+            option_type=OptionType.STRING,
+            description="Whether the amount is in stock units or bobux (default units)",
+            required=False,
+            choices=["units", "bobux"]
+        )
+    ]
+)
+async def stock_buy(ctx: SlashContext, ticker_symbol: str, amount: float, units_or_bobux: str = "units"):
     stocks.validate_ticker_symbol(ticker_symbol)
 
-    units_or_bobux = units_or_bobux or "units"
     if units_or_bobux not in ["units", "bobux"]:
-        raise commands.CommandError("Please specify either 'units' or 'bobux' (default 'units').")
+        raise CommandError("Please specify either units or bobux (default units)")
 
     if units_or_bobux == "bobux":
         units, cost = stocks.buy(ctx.author, ticker_symbol, balance.from_float(amount))
     else:
         units, cost = stocks.buy(ctx.author, ticker_symbol, amount)
 
-    await ctx.send(f"Bought {units} {ticker_symbol.upper()} for {balance.to_string(*cost)}.")
+    await ctx.send(f"Bought {units} {ticker_symbol.upper()} for {balance.to_string(*cost)}")
 
-@stock.command(name="sell")
-async def stock_sell(ctx: commands.Context, ticker_symbol: str, amount: Optional[float], units_or_bobux: Optional[str]):
-    """
-    Sell a stock.
-
-    Examples:
-        Sell one share of Microsoft stock:
-            b$stock sell MSFT 1
-        Sell all of your Bitcoin:
-            b$stock sell BTC
-    """
-
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="sell",
+    description="Sell a stock",
+    options=[
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to sell",
+            required=True
+        ),
+        create_option(
+            name="amount",
+            option_type=OptionType.FLOAT,
+            description="The amount to sell, or blank to sell all you own",
+            required=False
+        ),
+        create_option(
+            name="units_or_bobux",
+            option_type=OptionType.STRING,
+            description="Whether the amount is in stock units or bobux (default units)",
+            required=False,
+            choices=["units", "bobux"]
+        )
+    ]
+)
+async def stock_sell(ctx: SlashContext, ticker_symbol: str, amount: Optional[float] = None, units_or_bobux: str = "units"):
     stocks.validate_ticker_symbol(ticker_symbol)
 
-    if amount is None and units_or_bobux is not None:
-        raise commands.CommandError("Cannot specify 'units' or 'bobux' if selling all of a stock.")
+    if amount is None:
+        units_or_bobux = "units"
 
-    units_or_bobux = units_or_bobux or "units"
     if units_or_bobux not in ["units", "bobux"]:
-        raise commands.CommandError("Please specify either 'units' or 'bobux' (default 'units').")
+        raise CommandError("Please specify either units or bobux (default units)")
 
     if units_or_bobux == "bobux":
         units, proceeds = stocks.sell(ctx.author, ticker_symbol, balance.from_float(amount))
     else:
         units, proceeds = stocks.sell(ctx.author, ticker_symbol, amount)
 
-    await ctx.send(f"Sold {units} {ticker_symbol.upper()} for {balance.to_string(*proceeds)}.")
+    await ctx.send(f"Sold {units} {ticker_symbol.upper()} for {balance.to_string(*proceeds)}")
 
-@stock.command(name="chart", aliases=["graph", "price"])
-async def stock_chart(ctx: commands.Context, ticker_symbol: str):
-    """
-    Show a chart of historical prices for a stock.
-
-    Note that the current price might be different than what the chart shows.
-    """
-
+@slash.subcommand(
+    base="stock",
+    base_description="Trade stocks, cryptocurrencies, and foreign exchange currencies",
+    name="chart",
+    description="Show a chart of historical prices for a stock",
+    options=[
+        create_option(
+            name="ticker_symbol",
+            option_type=OptionType.STRING,
+            description="The ticker symbol of the stock to show",
+            required=True
+        )
+    ]
+)
+async def stock_chart(ctx: SlashContext, ticker_symbol: str):
     stocks.validate_ticker_symbol(ticker_symbol)
+
+    # Generating a chart takes longer than 3 seconds
+    await ctx.defer(hidden=True)
 
     current_price = stocks.get_price(ticker_symbol)
     price_history = stocks.get_price_history(ticker_symbol)
     if current_price is None or price_history is None:
-        raise commands.CommandError(f"Ticker symbol '{ticker_symbol}' does not exist.")
+        raise CommandError(f"Ticker symbol ‘{ticker_symbol}’ does not exist.")
 
     header = f"{ticker_symbol.upper()} – currently {round(current_price, 2)} bobux per unit:"
     chart = asciichart.plot(price_history, { "height": 10 })
 
-    await ctx.send(f"{header}\n```\n{chart}\n```")
+    await ctx.send(f"{header}\n```\n{chart}\n```", hidden=True)
 
 
-try:
-    with open("data/token.txt", "r") as token_file:
-        token = token_file.read()
-        bot.run(token)
-except KeyboardInterrupt:
-    print("Stopping...")
-    db.close()
+if __name__ == "__main__":
+    try:
+        with open("data/token.txt", "r") as token_file:
+            token = token_file.read()
+            client.run(token)
+    except KeyboardInterrupt:
+        print("Stopping...")
+        db.close()
