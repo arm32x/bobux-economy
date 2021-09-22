@@ -67,7 +67,8 @@ import sqlite3
 from typing import *
 
 import discord
-from discord_slash import SlashContext, SlashCommandOptionType as OptionType
+from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType
+from discord_slash.context import InteractionContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
 
 import balance
@@ -316,9 +317,16 @@ async def bal_check_self(ctx: SlashContext):
         )
     ]
 )
-async def bal_check_user(ctx: SlashContext, target: discord.Member):
+async def bal_check_user(ctx: InteractionContext, target: discord.Member):
     amount, spare_change = balance.get(target)
     await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}", hidden=True)
+
+@slash.context_menu(
+    target=ContextMenuType.USER,
+    name="Check Balance"
+)
+async def bal_check_context_menu(ctx: MenuContext):
+    await bal_check_user.invoke(ctx, ctx.target_author)
 
 @slash.subcommand(
     base="bal",
@@ -549,7 +557,7 @@ async def real_estate_check_self(ctx: SlashContext):
         )
     ]
 )
-async def real_estate_check_user(ctx: SlashContext, target: discord.Member):
+async def real_estate_check_user(ctx: InteractionContext, target: discord.Member):
     c = db.cursor()
     c.execute("""
             SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
@@ -560,6 +568,13 @@ async def real_estate_check_user(ctx: SlashContext, target: discord.Member):
     for channel_id, purchase_time in results:
         message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
     await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.context_menu(
+    target=ContextMenuType.USER,
+    name="Check Real Estate"
+)
+async def real_estate_check_context_menu(ctx: MenuContext):
+    await real_estate_check_user.invoke(ctx, ctx.target_author)
 
 @slash.subcommand(
     base="real_estate",
