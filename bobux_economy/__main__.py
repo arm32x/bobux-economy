@@ -339,9 +339,10 @@ async def bal_check_context_menu(ctx: MenuContext):
 async def bal_check_everyone(ctx: SlashContext):
     c = db.cursor()
     c.execute("""
-            SELECT id, balance, spare_change FROM members WHERE guild_id = ?;
+            SELECT id, balance, spare_change FROM members WHERE guild_id = ?
+                ORDER BY balance DESC, spare_change DESC;
         """, (ctx.guild.id, ))
-    results: Tuple[int, int, bool] = c.fetchall()
+    results: List[Tuple[int, int, bool]] = c.fetchall()
 
     message_parts = []
     for member_id, amount, spare_change in results:
