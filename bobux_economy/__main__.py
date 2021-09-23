@@ -1,4 +1,10 @@
 """
+bobux economy v0.7.0 - the interactions update
+  - converted all commands to slash commands
+  - you can now check someone’s balance using the right-click menu
+  - removed stocks, since they stopped working and no one used them
+  - the results of ‘/bal check everyone’ are now sorted
+
 bobux economy v0.6.2 - the stonks update
   - fix infinite money glitch with stocks
 
