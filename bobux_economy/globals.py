@@ -11,4 +11,4 @@ class CommandError(RuntimeError):
 
 client = discord.Client()
 
-slash = SlashCommand(client, sync_commands=True)
+slash = SlashCommand(client, sync_commands=True, debug_guild=766073081449545798)

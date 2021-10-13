@@ -303,6 +303,39 @@ async def config_real_estate_category(ctx: SlashContext, category: Optional[disc
     db.commit()
     await ctx.send(f"Set real estate category to {category_mention}")
 
+@slash.subcommand(
+    base="config",
+    base_description="Change the settings of the bot",
+    name="real_estate_archive_category",
+    description="If set, real estate channels will be moved to this category when sold instead of being deleted",
+    options=[
+        create_option(
+            name="category",
+            option_type=OptionType.CHANNEL,
+            description="The category to set, or blank to remove",
+            required=False
+        )
+    ]
+)
+async def config_real_estate_archive_category(ctx: SlashContext, category: Optional[discord.abc.GuildChannel] = None):
+    check_author_can_manage_guild(ctx)
+    if category is not None and not isinstance(category, discord.CategoryChannel):
+        raise CommandError("The real estate archive category must be a category")
+
+    category_id = category.id if category is not None else None
+    category_mention = f"‘{category.name}’" if category is not None else "None"
+
+    try:
+        c = db.cursor()
+        c.execute("""
+            INSERT INTO guilds(id, real_estate_archive_category) VALUES(?, ?)
+                ON CONFLICT(id) DO UPDATE SET real_estate_archive_category = excluded.real_estate_archive_category;
+        """, (ctx.guild.id, category_id))
+        db.commit()
+        await ctx.send(f"Set real estate archive category to {category_mention}")
+    except sqlite3.IntegrityError:  # Check constraint failed
+        await ctx.send("Cannot set the real estate archive category if the real estate category is not set")
+
 
 @slash.subcommand(
     base="bal",
