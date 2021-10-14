@@ -616,6 +616,102 @@ async def real_estate_check_everyone(ctx: SlashContext):
     await ctx.send("\n".join(message_parts), hidden=True)
 
 
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="new",
+    description="Create a new paid subscription in this server",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role to grant to subscribers",
+            required=True
+        ),
+        create_option(
+            name="price_per_week",
+            option_type=OptionType.FLOAT,
+            description="The price of this subscription, charged weekly",
+            required=True
+        )
+    ]
+)
+async def subscriptions_new(ctx: SlashContext, role: discord.Role, price_per_week: Union[float, int]):
+    check_author_has_admin_role(ctx)
+
+    price, spare_change = balance.from_float(float(price_per_week))
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO available_subscriptions VALUES (?, ?, ?, ?);
+    """, (role.id, ctx.guild.id, price, spare_change))
+    db.commit()
+
+    await ctx.send(f"Created subscription for role {role.mention} for {balance.to_string(price, spare_change)} per week")
+
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="delete",
+    description="Delete a paid subscription from this server. The role will not be revoked from current subscribers.",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to delete",
+            required=True
+        )
+    ]
+)
+async def subscriptions_delete(ctx: SlashContext, role: discord.Role):
+    check_author_has_admin_role(ctx)
+
+    c = db.cursor()
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM available_subscriptions WHERE role_id = ?);
+    """, (role.id, ))
+    existed: bool = c.fetchone()[0]
+    c.execute("""
+        DELETE FROM available_subscriptions WHERE role_id = ?;    
+    """, (role.id, ))
+    c.execute("""
+        DELETE FROM member_subscriptions WHERE role_id = ?;
+    """, (role.id, ))
+    db.commit()
+
+    if existed:
+        await ctx.send(f"Deleted subscription for role {role.mention}")
+    else:
+        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="list",
+    description="List available subscriptions"
+)
+async def subscriptions_list(ctx: SlashContext):
+    c = db.cursor()
+    c.execute("""
+        SELECT role_id, price, spare_change FROM available_subscriptions
+            WHERE guild_id = ?;
+    """, (ctx.guild.id, ))
+    available_subscriptions: List[int, int, bool] = c.fetchall()
+    c.execute("""
+        SELECT role_id, subscribed_since FROM member_subscriptions
+            WHERE member_id = ?;
+    """, (ctx.author.id, ))
+    member_subscriptions: Dict[int, datetime] = dict(c.fetchall())
+
+    message_parts = [f"Available subscriptions in ‘{ctx.guild.name}’:"]
+    for role_id, price, spare_change in available_subscriptions:
+        part = f"<@&{role_id}>: {balance.to_string(price, spare_change)} per week"
+        if role_id in member_subscriptions:
+            part += f" (subscribed since {member_subscriptions[role_id]})"
+        message_parts.append(part)
+    await ctx.send("\n".join(message_parts), hidden=True)
+
+
 if __name__ == "__main__":
     try:
         with open("data/token.txt", "r") as token_file:
