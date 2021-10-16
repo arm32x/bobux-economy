@@ -74,15 +74,16 @@ bobux economy v0.1.0
   - initial release
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import sqlite3
 from typing import *
 
 import discord
-from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType
+from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType, ButtonStyle
 from discord_slash.context import InteractionContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_components import create_actionrow, create_button, wait_for_component
 
 import balance
 import database
@@ -707,9 +708,145 @@ async def subscriptions_list(ctx: SlashContext):
     for role_id, price, spare_change in available_subscriptions:
         part = f"<@&{role_id}>: {balance.to_string(price, spare_change)} per week"
         if role_id in member_subscriptions:
-            part += f" (subscribed since {member_subscriptions[role_id]})"
+            subscribed_since = member_subscriptions[role_id].replace(tzinfo=timezone.utc).astimezone(None)
+            part += f" (subscribed since {subscribed_since})"
         message_parts.append(part)
     await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.slash(
+    name="subscribe",
+    description="Subscribe to a paid subscription",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to subscribe to",
+            required=True
+        )
+    ]
+)
+async def subscribe(ctx: SlashContext, role: discord.Role):
+    c = db.cursor()
+    c.execute("""
+        SELECT price, spare_change FROM available_subscriptions
+            WHERE role_id = ?; 
+    """, (role.id, ))
+    price: Optional[Tuple[int, bool]] = c.fetchone()
+    if price is None:
+        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+        return
+
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM member_subscriptions WHERE member_id = ? AND role_id = ?);
+    """, (ctx.author.id, role.id))
+    already_subscribed: bool = c.fetchone()[0]
+    if already_subscribed:
+        await ctx.send(f"You are already subscribed to {role.mention}", hidden=True)
+        return
+
+    action_row = create_actionrow(
+        create_button(
+            style=ButtonStyle.green,
+            label="Subscribe",
+            custom_id="subscribe"
+        ),
+        create_button(
+            style=ButtonStyle.gray,
+            label="Cancel",
+            custom_id="cancel"
+        )
+    )
+    await ctx.send((
+        f"Subscribe to {role.mention} for {balance.to_string(*price)} per week? "
+        f"You will be charged for the first week immediately."
+    ), components=[action_row], hidden=True)
+    button_ctx = await wait_for_component(client, components=action_row)
+
+    if button_ctx.custom_id != "subscribe":
+        await button_ctx.edit_origin(content=f"Cancelled.", components=[])
+        return
+
+    try:
+        balance.subtract(ctx.author, *price)
+    except CommandError as ex:
+        # The active context changed, so the global on_slash_command_error
+        # handler will not work.
+        await button_ctx.edit_origin(content=f"**Error:** {ex}", components=[])
+        raise ex
+
+    try:
+        await discord.Member.add_roles(ctx.author, role, reason="Subscribed to paid subscription")
+    except discord.Forbidden:
+        await button_ctx.edit_origin(content=(
+            "**Error:** Missing permissions. Make sure the bot has the Manage "
+            "Roles permission and the subscription role is below the bot’s "
+            "highest role."
+        ), components=[])
+        return
+
+    c.execute("""
+        INSERT INTO member_subscriptions VALUES (?, ?, ?);
+    """, (ctx.author.id, role.id, datetime.utcnow()))
+    db.commit()
+
+    await button_ctx.edit_origin(content=f"Subscribed to {role.mention}.", components=[])
+
+@slash.slash(
+    name="unsubscribe",
+    description="Unsubscribe from a paid subscription",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to unsubscribe from",
+            required=True
+        )
+    ]
+)
+async def unsubscribe(ctx: SlashContext, role: discord.Role):
+    c = db.cursor()
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM member_subscriptions WHERE member_id = ? AND role_id = ?);
+    """, (ctx.author.id, role.id))
+    already_subscribed: bool = c.fetchone()[0]
+    if not already_subscribed:
+        await ctx.send(f"You are not subscribed to {role.mention}", hidden=True)
+        return
+
+    action_row = create_actionrow(
+        create_button(
+            style=ButtonStyle.red,
+            label="Unsubscribe",
+            custom_id="unsubscribe"
+        ),
+        create_button(
+            style=ButtonStyle.gray,
+            label="Cancel",
+            custom_id="cancel"
+        )
+    )
+    await ctx.send(f"Unsubscribe from {role.mention}?", components=[action_row], hidden=True)
+    button_ctx = await wait_for_component(client, components=action_row)
+
+    if button_ctx.custom_id != "unsubscribe":
+        await button_ctx.edit_origin(content="Cancelled.", components=[])
+        return
+
+    try:
+        await discord.Member.remove_roles(ctx.author, role, reason="Unsubscribed from paid subscription")
+    except discord.Forbidden:
+        await button_ctx.edit_origin(content=(
+            "**Error:** Missing permissions. Make sure the bot has the Manage "
+            "Roles permission and the subscription role is below the bot’s "
+            "highest role."
+        ), components=[])
+        return
+
+    c.execute("""
+        DELETE FROM member_subscriptions WHERE member_id = ? AND role_id = ?;
+    """, (ctx.author.id, role.id))
+
+    await button_ctx.edit_origin(content=f"Unsubscribed from {role.mention}.", components=[])
 
 
 if __name__ == "__main__":
