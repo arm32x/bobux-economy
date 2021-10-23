@@ -1,4 +1,10 @@
 """
+bobux economy v0.7.1 - the interactions update
+  - users with the manage messages permission can now send memes posted in other
+    channels to the memes channel
+      - upvotes work as if the message was originally sent in the memes channel
+      - there is no penalty for having your post moved (yet)
+
 bobux economy v0.7.0 - the interactions update
   - converted all commands to slash commands
   - you can now check someone’s balance using the right-click menu
