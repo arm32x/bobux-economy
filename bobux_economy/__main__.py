@@ -188,6 +188,10 @@ def check_author_can_manage_guild(ctx: InteractionContext):
     if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
         raise CommandError("You must have Manage Server permissions to use this command")
 
+def check_author_can_manage_messages(ctx: InteractionContext):
+    if not bool(ctx.author.permissions_in(ctx.channel).manage_messages):
+        raise CommandError("You must have Manage Messages permissions to use this command")
+
 def check_author_has_admin_role(ctx: InteractionContext):
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
@@ -622,7 +626,7 @@ async def real_estate_check_everyone(ctx: SlashContext):
 )
 async def relocate_meme(ctx: MenuContext):
     # Make sure the user has appropriate permissions
-    check_author_can_manage_guild(ctx)
+    check_author_can_manage_messages(ctx)
 
     # Get the memes channel ID from the database
     c = db.cursor()
