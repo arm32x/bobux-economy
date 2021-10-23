@@ -183,11 +183,11 @@ async def on_slash_command_error(ctx: SlashContext, ex: Exception):
     raise ex
 
 
-def check_author_can_manage_guild(ctx: SlashContext):
+def check_author_can_manage_guild(ctx: InteractionContext):
     if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
         raise CommandError("You must have Manage Server permissions to use this command")
 
-def check_author_has_admin_role(ctx: SlashContext):
+def check_author_has_admin_role(ctx: InteractionContext):
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
     row: Tuple[Optional[int]] = c.fetchone() or (None, )
@@ -614,6 +614,72 @@ async def real_estate_check_everyone(ctx: SlashContext):
             current_owner_id = owner_id
         message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
     await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.context_menu(
+    target=ContextMenuType.MESSAGE,
+    name="Send to Memes Channel"
+)
+async def relocate_meme(ctx: MenuContext):
+    # Make sure the user has appropriate permissions
+    check_author_can_manage_guild(ctx)
+
+    # Get the memes channel ID from the database
+    c = db.cursor()
+    c.execute("""
+        SELECT memes_channel FROM guilds WHERE id = ?;
+    """, (ctx.guild.id, ))
+    memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
+    if memes_channel_id is None:
+        raise CommandError("Memes channel is not configured")
+    # Use the channel ID to get a full channel object
+    memes_channel: Optional[discord.abc.GuildChannel] = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
+    if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
+        raise CommandError("The memes channel must be a text channel")
+
+    # Create a webhook that mimics the original poster
+    target_author = ctx.target_message.author
+    try:
+        webhook: discord.Webhook = await memes_channel.create_webhook(
+            name=target_author.display_name,
+            avatar=await target_author.avatar_url.read(),
+            reason=f"Puppeting user {target_author.id} in order to relocate a meme message"
+        )
+    except discord.Forbidden:
+        # Check future requirements for a better error message
+        if ctx.guild.me.permissions_in(ctx.target_message.channel).manage_messages:
+            raise CommandError("The bot must have Manage Webhooks permissions to use this command")
+        else:
+            raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
+
+    # If the bot doesn't have Manage Messages permissions, this will fail later
+    if not ctx.guild.me.permissions_in(ctx.target_message.channel).manage_messages:
+        raise CommandError("The bot must have Manage Messages permissions to use this command")
+
+    # Get the attachments from the original message as uploadable files
+    files = []
+    for attachment in ctx.target_message.attachments:
+        files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
+    # Repost the meme in the memes channel. Vote reactions will be automatically
+    # added in the on_message() handler.
+    await webhook.send(
+        content=ctx.target_message.content,
+        files=files,
+        embeds=ctx.target_message.embeds,
+        allowed_mentions=discord.AllowedMentions.none(),
+        tts=ctx.target_message.tts
+    )
+    # Delete the original message using the bot API, not the interactions API
+    await discord.Message.delete(ctx.target_message)
+
+    # Permanently associate this webhook ID with the original poster
+    c.execute("""
+        INSERT INTO webhooks VALUES(?, ?);
+    """, (webhook.id, target_author.id))
+    db.commit()
+    # Delete the webhook
+    await webhook.delete(reason="Will no longer be used")
+
+    await ctx.send(f"Relocated message to {memes_channel.mention}", hidden=True)
 
 
 if __name__ == "__main__":
