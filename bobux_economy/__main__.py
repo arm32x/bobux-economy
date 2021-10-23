@@ -136,8 +136,9 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
             if vote is not None:
                 message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
+                guild = client.get_guild(payload.guild_id) or message.guild
 
-                if payload.user_id == message.author.id:
+                if payload.user_id == (await upvotes.get_original_author(message, guild)).id:
                     # The poster voted on their own message.
                     await upvotes.remove_extra_reactions(message, payload.member, None)
                     return

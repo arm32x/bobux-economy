@@ -188,7 +188,7 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
         voter_reward = balance.from_float(VOTER_REWARD * abs(difference))
 
         message = await partial_message.fetch()
-        poster = message.author if isinstance(message.author, discord.Member) else member.guild.get_member(message.author.id) or await member.guild.fetch_member(message.author.id)
+        poster = await get_original_author(message, member.guild)
         if poster is None:
             logging.error(f"Member {message.author.id} not found in guild {member.guild.id}!")
             return
@@ -210,3 +210,26 @@ async def on_vote(partial_message: discord.PartialMessage, member: discord.Membe
             balance.subtract(member, *voter_reward)
             logging.info(f"{member.id} on {partial_message.id}: {poster_reward} bobux / -{voter_reward} bobux")
 
+async def get_original_author(message: discord.Message, guild: discord.Guild) -> Optional[discord.Member]:
+    if isinstance(message.author, discord.Member):
+        return message.author
+
+    try:
+        return guild.get_member(message.author.id) \
+               or await guild.fetch_member(message.author.id)
+    except discord.NotFound:
+        # Could be a webhook, check for puppeting
+        if message.webhook_id is not None:
+            c = db.cursor()
+            c.execute("""
+                SELECT member_id FROM webhooks WHERE webhook_id = ?;
+            """, (message.webhook_id, ))
+            member_id: Optional[int] = (c.fetchone() or (None, ))[0]
+            if member_id is not None:
+                try:
+                    return guild.get_member(member_id) \
+                           or await guild.fetch_member(member_id)
+                except discord.NotFound:
+                    return None
+
+    return None
