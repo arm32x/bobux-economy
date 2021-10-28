@@ -74,6 +74,7 @@ bobux economy v0.1.0
   - initial release
 """
 
+import asyncio.tasks
 from datetime import datetime, timezone
 import logging
 import sqlite3
@@ -90,6 +91,7 @@ import database
 from database import connection as db
 from globals import client, slash, CommandError
 import real_estate
+import subscriptions
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
@@ -101,7 +103,9 @@ database.migrate()
 async def on_ready():
     logging.info("Synchronizing votes...")
     await upvotes.sync_votes()
-    logging.info("Done!")
+    logging.info("Starting subscriptions background task...")
+    asyncio.create_task(await subscriptions.run())
+    logging.info("Ready!")
 
 @client.event
 async def on_message(message: discord.Message):
@@ -775,7 +779,7 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
         raise ex
 
     try:
-        await discord.Member.add_roles(ctx.author, role, reason="Subscribed to paid subscription")
+        await subscriptions.subscribe(ctx.author, role)
     except discord.Forbidden:
         await button_ctx.edit_origin(content=(
             "**Error:** Missing permissions. Make sure the bot has the Manage "
@@ -783,11 +787,6 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
             "highest role."
         ), components=[])
         return
-
-    c.execute("""
-        INSERT INTO member_subscriptions VALUES (?, ?, ?);
-    """, (ctx.author.id, role.id, datetime.utcnow()))
-    db.commit()
 
     await button_ctx.edit_origin(content=f"Subscribed to {role.mention}.", components=[])
 
@@ -833,7 +832,7 @@ async def unsubscribe(ctx: SlashContext, role: discord.Role):
         return
 
     try:
-        await discord.Member.remove_roles(ctx.author, role, reason="Unsubscribed from paid subscription")
+        await subscriptions.unsubscribe(ctx.author, role)
     except discord.Forbidden:
         await button_ctx.edit_origin(content=(
             "**Error:** Missing permissions. Make sure the bot has the Manage "
@@ -842,10 +841,6 @@ async def unsubscribe(ctx: SlashContext, role: discord.Role):
         ), components=[])
         return
 
-    c.execute("""
-        DELETE FROM member_subscriptions WHERE member_id = ? AND role_id = ?;
-    """, (ctx.author.id, role.id))
-
     await button_ctx.edit_origin(content=f"Unsubscribed from {role.mention}.", components=[])
 
 
@@ -853,7 +848,7 @@ if __name__ == "__main__":
     try:
         with open("data/token.txt", "r") as token_file:
             token = token_file.read()
-            client.run(token)
+        client.run(token)
     except KeyboardInterrupt:
         print("Stopping...")
         db.close()
