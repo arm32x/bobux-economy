@@ -80,21 +80,24 @@ bobux economy v0.1.0
   - initial release
 """
 
-from datetime import datetime
+import asyncio.tasks
+from datetime import datetime, timezone
 import logging
 import sqlite3
 from typing import *
 
 import discord
-from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType
+from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType, ButtonStyle
 from discord_slash.context import InteractionContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
+from discord_slash.utils.manage_components import create_actionrow, create_button, wait_for_component
 
 import balance
 import database
 from database import connection as db
 from globals import client, slash, CommandError
 import real_estate
+import subscriptions
 import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
@@ -106,7 +109,9 @@ database.migrate()
 async def on_ready():
     logging.info("Synchronizing votes...")
     await upvotes.sync_votes()
-    logging.info("Done!")
+    logging.info("Starting subscriptions background task...")
+    asyncio.create_task(await subscriptions.run())
+    logging.info("Ready!")
 
 @client.event
 async def on_message(message: discord.Message):
@@ -131,7 +136,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if payload.member is not None:
         c = db.cursor()
         c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id = (c.fetchone() or (None, ))[0]
+        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
         if payload.channel_id == memes_channel_id:
             vote = None
@@ -161,7 +166,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     if payload.guild_id is not None:
         c = db.cursor()
         c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id = (c.fetchone() or (None, ))[0]
+        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
         if payload.channel_id == memes_channel_id:
             vote = None
@@ -587,7 +592,7 @@ async def real_estate_check_user(ctx: InteractionContext, target: discord.Member
     c.execute("""
             SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
         """, (target.id, ))
-    results: List[int, datetime] = c.fetchall()
+    results: List[Tuple[int, datetime]] = c.fetchall()
 
     message_parts = [f"{target.mention}:"]
     for channel_id, purchase_time in results:
@@ -615,7 +620,7 @@ async def real_estate_check_everyone(ctx: SlashContext):
             SELECT id, owner_id, purchase_time FROM purchased_channels WHERE guild_id = ?
                 ORDER BY owner_id;
         """, (ctx.guild.id, ))
-    results: List[int, int, datetime] = c.fetchall()
+    results: List[Tuple[int, int, datetime]] = c.fetchall()
 
     message_parts = []
     current_owner_id = None
@@ -693,11 +698,234 @@ async def relocate_meme(ctx: MenuContext):
     await ctx.send(f"Relocated message to {memes_channel.mention}", hidden=True)
 
 
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="new",
+    description="Create a new paid subscription in this server",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role to grant to subscribers",
+            required=True
+        ),
+        create_option(
+            name="price_per_week",
+            option_type=OptionType.FLOAT,
+            description="The price of this subscription, charged weekly",
+            required=True
+        )
+    ]
+)
+async def subscriptions_new(ctx: SlashContext, role: discord.Role, price_per_week: Union[float, int]):
+    check_author_has_admin_role(ctx)
+
+    price, spare_change = balance.from_float(float(price_per_week))
+
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO available_subscriptions VALUES (?, ?, ?, ?);
+    """, (role.id, ctx.guild.id, price, spare_change))
+    db.commit()
+
+    await ctx.send(f"Created subscription for role {role.mention} for {balance.to_string(price, spare_change)} per week")
+
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="delete",
+    description="Delete a paid subscription from this server. The role will not be revoked from current subscribers.",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to delete",
+            required=True
+        )
+    ]
+)
+async def subscriptions_delete(ctx: SlashContext, role: discord.Role):
+    check_author_has_admin_role(ctx)
+
+    c = db.cursor()
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM available_subscriptions WHERE role_id = ?);
+    """, (role.id, ))
+    existed: bool = c.fetchone()[0]
+    c.execute("""
+        DELETE FROM available_subscriptions WHERE role_id = ?;    
+    """, (role.id, ))
+    c.execute("""
+        DELETE FROM member_subscriptions WHERE role_id = ?;
+    """, (role.id, ))
+    db.commit()
+
+    if existed:
+        await ctx.send(f"Deleted subscription for role {role.mention}")
+    else:
+        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+
+@slash.subcommand(
+    base="subscriptions",
+    base_description="Manage paid subscriptions",
+    name="list",
+    description="List available subscriptions"
+)
+async def subscriptions_list(ctx: SlashContext):
+    c = db.cursor()
+    c.execute("""
+        SELECT role_id, price, spare_change FROM available_subscriptions
+            WHERE guild_id = ?;
+    """, (ctx.guild.id, ))
+    available_subscriptions: List[Tuple[int, int, bool]] = c.fetchall()
+    c.execute("""
+        SELECT role_id, subscribed_since FROM member_subscriptions
+            WHERE member_id = ?;
+    """, (ctx.author.id, ))
+    member_subscriptions: Dict[int, datetime] = dict(c.fetchall())
+
+    message_parts = [f"Available subscriptions in ‘{ctx.guild.name}’:"]
+    for role_id, price, spare_change in available_subscriptions:
+        part = f"<@&{role_id}>: {balance.to_string(price, spare_change)} per week"
+        if role_id in member_subscriptions:
+            subscribed_since = member_subscriptions[role_id].replace(tzinfo=timezone.utc).astimezone(None)
+            part += f" (subscribed since {subscribed_since})"
+        message_parts.append(part)
+    await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.slash(
+    name="subscribe",
+    description="Subscribe to a paid subscription",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to subscribe to",
+            required=True
+        )
+    ]
+)
+async def subscribe(ctx: SlashContext, role: discord.Role):
+    c = db.cursor()
+    c.execute("""
+        SELECT price, spare_change FROM available_subscriptions
+            WHERE role_id = ?; 
+    """, (role.id, ))
+    price: Optional[Tuple[int, bool]] = c.fetchone()
+    if price is None:
+        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+        return
+
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM member_subscriptions WHERE member_id = ? AND role_id = ?);
+    """, (ctx.author.id, role.id))
+    already_subscribed: bool = c.fetchone()[0]
+    if already_subscribed:
+        await ctx.send(f"You are already subscribed to {role.mention}", hidden=True)
+        return
+
+    action_row = create_actionrow(
+        create_button(
+            style=ButtonStyle.green,
+            label="Subscribe",
+            custom_id="subscribe"
+        ),
+        create_button(
+            style=ButtonStyle.gray,
+            label="Cancel",
+            custom_id="cancel"
+        )
+    )
+    await ctx.send((
+        f"Subscribe to {role.mention} for {balance.to_string(*price)} per week? "
+        f"You will be charged for the first week immediately."
+    ), components=[action_row], hidden=True)
+    button_ctx = await wait_for_component(client, components=action_row)
+
+    if button_ctx.custom_id != "subscribe":
+        await button_ctx.edit_origin(content=f"Cancelled.", components=[])
+        return
+
+    try:
+        balance.subtract(ctx.author, *price)
+    except CommandError as ex:
+        # The active context changed, so the global on_slash_command_error
+        # handler will not work.
+        await button_ctx.edit_origin(content=f"**Error:** {ex}", components=[])
+        raise ex
+
+    try:
+        await subscriptions.subscribe(ctx.author, role)
+    except discord.Forbidden:
+        await button_ctx.edit_origin(content=(
+            "**Error:** Missing permissions. Make sure the bot has the Manage "
+            "Roles permission and the subscription role is below the bot’s "
+            "highest role."
+        ), components=[])
+        return
+
+    await button_ctx.edit_origin(content=f"Subscribed to {role.mention}.", components=[])
+
+@slash.slash(
+    name="unsubscribe",
+    description="Unsubscribe from a paid subscription",
+    options=[
+        create_option(
+            name="role",
+            option_type=OptionType.ROLE,
+            description="The role of the subscription to unsubscribe from",
+            required=True
+        )
+    ]
+)
+async def unsubscribe(ctx: SlashContext, role: discord.Role):
+    c = db.cursor()
+    c.execute("""
+        SELECT EXISTS(SELECT 1 FROM member_subscriptions WHERE member_id = ? AND role_id = ?);
+    """, (ctx.author.id, role.id))
+    already_subscribed: bool = c.fetchone()[0]
+    if not already_subscribed:
+        await ctx.send(f"You are not subscribed to {role.mention}", hidden=True)
+        return
+
+    action_row = create_actionrow(
+        create_button(
+            style=ButtonStyle.red,
+            label="Unsubscribe",
+            custom_id="unsubscribe"
+        ),
+        create_button(
+            style=ButtonStyle.gray,
+            label="Cancel",
+            custom_id="cancel"
+        )
+    )
+    await ctx.send(f"Unsubscribe from {role.mention}?", components=[action_row], hidden=True)
+    button_ctx = await wait_for_component(client, components=action_row)
+
+    if button_ctx.custom_id != "unsubscribe":
+        await button_ctx.edit_origin(content="Cancelled.", components=[])
+        return
+
+    try:
+        await subscriptions.unsubscribe(ctx.author, role)
+    except discord.Forbidden:
+        await button_ctx.edit_origin(content=(
+            "**Error:** Missing permissions. Make sure the bot has the Manage "
+            "Roles permission and the subscription role is below the bot’s "
+            "highest role."
+        ), components=[])
+        return
+
+    await button_ctx.edit_origin(content=f"Unsubscribed from {role.mention}.", components=[])
+
+
 if __name__ == "__main__":
     try:
         with open("data/token.txt", "r") as token_file:
             token = token_file.read()
-            client.run(token)
+        client.run(token)
     except KeyboardInterrupt:
         print("Stopping...")
         db.close()

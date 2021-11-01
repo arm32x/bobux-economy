@@ -82,7 +82,7 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
         c.execute("""
             SELECT vote FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
         """, (message_id, member_id, check_equal_to))
-        previous_vote = (c.fetchone() or (None, ))[0]
+        previous_vote: Optional[int] = (c.fetchone() or (None, ))[0]
         c.execute("""
             DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
         """, (message_id, member_id, check_equal_to))
@@ -98,7 +98,7 @@ async def delete_vote(message_id: int, channel_id: int, member_id: int, check_eq
         c.execute("""
             SELECT vote FROM votes WHERE message_id = ? AND member_id = ?;
         """, (message_id, member_id))
-        previous_vote = (c.fetchone() or (None, ))[0]
+        previous_vote: Optional[int] = (c.fetchone() or (None, ))[0]
         c.execute("""
             DELETE FROM votes WHERE message_id = ? AND member_id = ?;
         """, (message_id, member_id))
@@ -116,7 +116,7 @@ async def _sync_message(message: discord.Message):
     c.execute("""
         SELECT member_id, vote FROM votes WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
-    deleted_rows = c.fetchall()
+    deleted_rows: List[int, int] = c.fetchall()
     c.execute("""
         DELETE FROM votes WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
@@ -154,7 +154,7 @@ async def sync_votes():
         SELECT memes_channel, last_memes_message FROM guilds
             WHERE memes_channel IS NOT NULL AND last_memes_message IS NOT NULL;
     """)
-    result = c.fetchall()
+    result: List[Tuple[int, int]] = c.fetchall()
     for channel_id, last_memes_message in result:
         channel = client.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
