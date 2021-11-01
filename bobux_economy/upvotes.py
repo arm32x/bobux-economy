@@ -22,11 +22,12 @@ def message_eligible(message: discord.Message) -> bool:
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
-    if (memes_channel_id is not None and
-        message.channel.id == memes_channel_id):
-        return True
-    else:
-        return False
+    return (
+        memes_channel_id is not None
+        and message.channel.id == memes_channel_id
+        and not message.content.startswith("💬")
+        and not message.content.startswith("🗨️")
+    )
 
 async def add_reactions(message: Union[discord.Message, discord.PartialMessage]):
     await message.add_reaction(UPVOTE_EMOJI)
