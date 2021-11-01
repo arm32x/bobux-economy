@@ -221,14 +221,14 @@ def check_author_has_admin_role(ctx: InteractionContext):
 )
 async def version(ctx: SlashContext):
     if ctx.invoked_subcommand is None:
-        await ctx.send(__doc__.strip().partition("\n")[0].strip())
+        await ctx.send(__doc__.strip().partition("\n")[0].strip(), hidden=True)
 
 @slash.slash(
     name="changelog",
     description="Show the changelog of the bot"
 )
 async def changelog(ctx: SlashContext):
-    await ctx.send(f"```{__doc__.strip()}```")
+    await ctx.send(f"```{__doc__.strip()}```", hidden=True)
 
 
 @slash.subcommand(
