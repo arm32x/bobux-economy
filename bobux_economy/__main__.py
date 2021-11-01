@@ -652,6 +652,10 @@ async def relocate_meme(ctx: MenuContext):
     if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
         raise CommandError("The memes channel must be a text channel")
 
+    # Don't move messages already in the memes channel
+    if ctx.target_message.channel.id == memes_channel_id:
+        raise CommandError("Message is already in the memes channel")
+
     # Create a webhook that mimics the original poster
     target_author = ctx.target_message.author
     try:
