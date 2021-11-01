@@ -130,7 +130,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if payload.member is not None:
         c = db.cursor()
         c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id = (c.fetchone() or (None, ))[0]
+        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
         if payload.channel_id == memes_channel_id:
             vote = None
@@ -159,7 +159,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     if payload.guild_id is not None:
         c = db.cursor()
         c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id = (c.fetchone() or (None, ))[0]
+        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
 
         if payload.channel_id == memes_channel_id:
             vote = None
@@ -581,7 +581,7 @@ async def real_estate_check_user(ctx: InteractionContext, target: discord.Member
     c.execute("""
             SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
         """, (target.id, ))
-    results: List[int, datetime] = c.fetchall()
+    results: List[Tuple[int, datetime]] = c.fetchall()
 
     message_parts = [f"{target.mention}:"]
     for channel_id, purchase_time in results:
@@ -609,7 +609,7 @@ async def real_estate_check_everyone(ctx: SlashContext):
             SELECT id, owner_id, purchase_time FROM purchased_channels WHERE guild_id = ?
                 ORDER BY owner_id;
         """, (ctx.guild.id, ))
-    results: List[int, int, datetime] = c.fetchall()
+    results: List[Tuple[int, int, datetime]] = c.fetchall()
 
     message_parts = []
     current_owner_id = None
@@ -701,7 +701,7 @@ async def subscriptions_list(ctx: SlashContext):
         SELECT role_id, price, spare_change FROM available_subscriptions
             WHERE guild_id = ?;
     """, (ctx.guild.id, ))
-    available_subscriptions: List[int, int, bool] = c.fetchall()
+    available_subscriptions: List[Tuple[int, int, bool]] = c.fetchall()
     c.execute("""
         SELECT role_id, subscribed_since FROM member_subscriptions
             WHERE member_id = ?;
