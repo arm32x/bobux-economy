@@ -1,4 +1,15 @@
 """
+bobux economy v0.8.0
+  - added subscriptions, which allow purchasing certain roles for a weekly
+    subscription fee
+      - use ‘/subscriptions list’ for more info
+  - ‘/version’ and ‘/changelog’ no longer broadcast to the entire server
+  - messages starting with 💬 or 🗨️ in the memes channel will no longer have
+    upvote and downvote buttons
+  - messages already in the memes channel can no longer be moved to the memes
+    channel
+  - removed Herobrine
+
 bobux economy v0.7.1 - the interactions update
   - users with the manage messages permission can now send memes posted in other
     channels to the memes channel
