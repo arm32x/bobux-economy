@@ -107,6 +107,7 @@ import balance
 import database
 from database import connection as db
 from globals import client, slash, CommandError
+import http_api
 import real_estate
 import subscriptions
 import upvotes
@@ -122,6 +123,8 @@ async def on_ready():
     await upvotes.sync_votes()
     logging.info("Starting subscriptions background task...")
     asyncio.create_task(subscriptions.run())
+    logging.info("Starting HTTP API background task...")
+    asyncio.create_task(http_api.run())
     logging.info("Ready!")
 
 @client.event
