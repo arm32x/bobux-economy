@@ -638,7 +638,7 @@ async def real_estate_check_everyone(ctx: SlashContext):
     await ctx.send("\n".join(message_parts), hidden=True)
 
 
-async def relocate_message(message: discord.Message, destination: discord.TextChannel):
+async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
     if message.channel.id == destination.id:
         raise CommandError(f"Message already in {destination.mention}")
 
@@ -665,11 +665,20 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
     files = []
     for attachment in message.attachments:
         files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
+
+    # If requested, remove speech bubbles from the start of the message content
+    content = message.content
+    if remove_speech_bubbles:
+        if content.startswith("💬"):
+            content = content[1:].lstrip()
+        elif content.startswith("🗨️"):
+            content = content[2:].lstrip()
+
     # Repost the meme in the memes channel. Vote reactions will be automatically
     # added in the on_message() handler.
     # noinspection PyArgumentList
     await webhook.send(
-        content=message.content,
+        content=content,
         files=files,
         # embeds=ctx.target_message.embeds,
         allowed_mentions=discord.AllowedMentions.none(),
@@ -702,17 +711,26 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
             option_type=OptionType.CHANNEL,
             description="The channel to relocate the message to",
             required=True
+        ),
+        create_option(
+            name="remove_speech_bubbles",
+            option_type=OptionType.BOOLEAN,
+            description="Whether or not to remove 💬 or 🗨️ from the start of the message",
+            required=False
         )
     ]
 )
-async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.GuildChannel):
+async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
     check_author_can_manage_messages(ctx)
+
+    if remove_speech_bubbles is None:
+        remove_speech_bubbles = False
 
     if not isinstance(destination, discord.TextChannel):
         raise CommandError(f"Destination channel must be a text channel")
 
     message = await ctx.channel.fetch_message(int(message_id))
-    await relocate_message(message, destination)
+    await relocate_message(message, destination, remove_speech_bubbles=remove_speech_bubbles)
 
     await ctx.send(f"Relocated message to {destination.mention}", hidden=True)
 
@@ -741,7 +759,7 @@ async def relocate_meme(ctx: MenuContext):
     if ctx.target_message.channel.id == memes_channel_id:
         raise CommandError("Message is already in the memes channel")
 
-    await relocate_message(ctx.target_message, memes_channel)
+    await relocate_message(ctx.target_message, memes_channel, remove_speech_bubbles=True)
 
     await ctx.send(f"Relocated message to {memes_channel.mention}", hidden=True)
 
