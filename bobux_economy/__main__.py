@@ -691,7 +691,7 @@ async def relocate_meme(ctx: MenuContext):
     await webhook.send(
         content=ctx.target_message.content,
         files=files,
-        embeds=ctx.target_message.embeds,
+        # embeds=ctx.target_message.embeds,
         allowed_mentions=discord.AllowedMentions.none(),
         tts=ctx.target_message.tts
     )
