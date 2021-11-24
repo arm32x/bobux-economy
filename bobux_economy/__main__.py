@@ -637,6 +637,85 @@ async def real_estate_check_everyone(ctx: SlashContext):
         message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
     await ctx.send("\n".join(message_parts), hidden=True)
 
+
+async def relocate_message(message: discord.Message, destination: discord.TextChannel):
+    if message.channel.id == destination.id:
+        raise CommandError(f"Message already in {destination.mention}")
+
+    # Create a webhook that mimics the original poster
+    target_author = message.author
+    try:
+        webhook: discord.Webhook = await destination.create_webhook(
+            name=target_author.display_name,
+            avatar=await target_author.avatar_url.read(),
+            reason=f"Puppeting user {target_author.id} in order to relocate a message"
+        )
+    except discord.Forbidden:
+        # Check future requirements for a better error message
+        if destination.guild.me.permissions_in(message.channel).manage_messages:
+            raise CommandError("The bot must have Manage Webhooks permissions to use this command")
+        else:
+            raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
+
+    # If the bot doesn't have Manage Messages permissions, this will fail later
+    if not destination.guild.me.permissions_in(message.channel).manage_messages:
+        raise CommandError("The bot must have Manage Messages permissions to use this command")
+
+    # Get the attachments from the original message as uploadable files
+    files = []
+    for attachment in message.attachments:
+        files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
+    # Repost the meme in the memes channel. Vote reactions will be automatically
+    # added in the on_message() handler.
+    # noinspection PyArgumentList
+    await webhook.send(
+        content=message.content,
+        files=files,
+        # embeds=ctx.target_message.embeds,
+        allowed_mentions=discord.AllowedMentions.none(),
+        tts=message.tts
+    )
+    # Delete the original message using the bot API, not the interactions API
+    await discord.Message.delete(message)
+
+    # Permanently associate this webhook ID with the original poster
+    c = db.cursor()
+    c.execute("""
+        INSERT INTO webhooks VALUES(?, ?);
+    """, (webhook.id, target_author.id))
+    db.commit()
+    # Delete the webhook
+    await webhook.delete(reason="Will no longer be used")
+
+@slash.slash(
+    name="relocate",
+    description="Move a message to a different channel",
+    options=[
+        create_option(
+            name="message_id",
+            option_type=OptionType.STRING,
+            description="The ID of the message to relocate (slash commands don't support messages as parameters)",
+            required=True
+        ),
+        create_option(
+            name="destination",
+            option_type=OptionType.CHANNEL,
+            description="The channel to relocate the message to",
+            required=True
+        )
+    ]
+)
+async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.GuildChannel):
+    check_author_can_manage_messages(ctx)
+
+    if not isinstance(destination, discord.TextChannel):
+        raise CommandError(f"Destination channel must be a text channel")
+
+    message = await ctx.channel.fetch_message(int(message_id))
+    await relocate_message(message, destination)
+
+    await ctx.send(f"Relocated message to {destination.mention}", hidden=True)
+
 @slash.context_menu(
     target=ContextMenuType.MESSAGE,
     name="Send to Memes Channel"
@@ -662,49 +741,7 @@ async def relocate_meme(ctx: MenuContext):
     if ctx.target_message.channel.id == memes_channel_id:
         raise CommandError("Message is already in the memes channel")
 
-    # Create a webhook that mimics the original poster
-    target_author = ctx.target_message.author
-    try:
-        webhook: discord.Webhook = await memes_channel.create_webhook(
-            name=target_author.display_name,
-            avatar=await target_author.avatar_url.read(),
-            reason=f"Puppeting user {target_author.id} in order to relocate a meme message"
-        )
-    except discord.Forbidden:
-        # Check future requirements for a better error message
-        if ctx.guild.me.permissions_in(ctx.target_message.channel).manage_messages:
-            raise CommandError("The bot must have Manage Webhooks permissions to use this command")
-        else:
-            raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
-
-    # If the bot doesn't have Manage Messages permissions, this will fail later
-    if not ctx.guild.me.permissions_in(ctx.target_message.channel).manage_messages:
-        raise CommandError("The bot must have Manage Messages permissions to use this command")
-
-    # Get the attachments from the original message as uploadable files
-    files = []
-    for attachment in ctx.target_message.attachments:
-        files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
-    # Repost the meme in the memes channel. Vote reactions will be automatically
-    # added in the on_message() handler.
-    # noinspection PyArgumentList
-    await webhook.send(
-        content=ctx.target_message.content,
-        files=files,
-        # embeds=ctx.target_message.embeds,
-        allowed_mentions=discord.AllowedMentions.none(),
-        tts=ctx.target_message.tts
-    )
-    # Delete the original message using the bot API, not the interactions API
-    await discord.Message.delete(ctx.target_message)
-
-    # Permanently associate this webhook ID with the original poster
-    c.execute("""
-        INSERT INTO webhooks VALUES(?, ?);
-    """, (webhook.id, target_author.id))
-    db.commit()
-    # Delete the webhook
-    await webhook.delete(reason="Will no longer be used")
+    await relocate_message(ctx.target_message, memes_channel)
 
     await ctx.send(f"Relocated message to {memes_channel.mention}", hidden=True)
 
