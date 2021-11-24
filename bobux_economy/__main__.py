@@ -144,29 +144,29 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         # This reaction was added by the bot, ignore it.
         return
 
-    if payload.member is not None:
-        c = db.cursor()
-        c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
+    message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
+    if not upvotes.message_eligible(message):
+        return
 
-        if payload.channel_id == memes_channel_id:
-            vote = None
-            if payload.emoji.name == upvotes.UPVOTE_EMOJI:
-                vote = upvotes.Vote.UPVOTE
-            elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
-                vote = upvotes.Vote.DOWNVOTE
+    if payload.member is None:
+        return
 
-            if vote is not None:
-                message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
-                guild = client.get_guild(payload.guild_id) or message.guild
+    if payload.emoji.name == upvotes.UPVOTE_EMOJI:
+        vote = upvotes.Vote.UPVOTE
+    elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
+        vote = upvotes.Vote.DOWNVOTE
+    else:
+        return
 
-                if payload.user_id == (await upvotes.get_original_author(message, guild)).id:
-                    # The poster voted on their own message.
-                    await upvotes.remove_extra_reactions(message, payload.member, None)
-                    return
+    guild = client.get_guild(payload.guild_id) or message.guild
 
-                await upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
-                await upvotes.remove_extra_reactions(message, payload.member, vote)
+    if payload.user_id == (await upvotes.get_original_author(message, guild)).id:
+        # The poster voted on their own message.
+        await upvotes.remove_extra_reactions(message, payload.member, None)
+        return
+
+    await upvotes.record_vote(payload.message_id, payload.channel_id, payload.member.id, vote)
+    await upvotes.remove_extra_reactions(message, payload.member, vote)
 
 @client.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
@@ -174,29 +174,24 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
         # The removed reaction was from the bot.
         return
 
-    if payload.guild_id is not None:
-        c = db.cursor()
-        c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (payload.guild_id, ))
-        memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
+    message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
+    if not upvotes.message_eligible(message):
+        return
 
-        if payload.channel_id == memes_channel_id:
-            vote = None
-            if payload.emoji.name == upvotes.UPVOTE_EMOJI:
-                vote = upvotes.Vote.UPVOTE
-            elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
-                vote = upvotes.Vote.DOWNVOTE
+    if payload.emoji.name == upvotes.UPVOTE_EMOJI:
+        vote = upvotes.Vote.UPVOTE
+    elif payload.emoji.name == upvotes.DOWNVOTE_EMOJI:
+        vote = upvotes.Vote.DOWNVOTE
+    else:
+        return
 
-            if vote is not None:
-                if (payload.message_id, vote, payload.user_id) in upvotes.recently_removed_reactions:
-                    upvotes.recently_removed_reactions.remove((payload.message_id, vote, payload.user_id))
-                    return
+    if (payload.message_id, vote, payload.user_id) in upvotes.recently_removed_reactions:
+        upvotes.recently_removed_reactions.remove((payload.message_id, vote, payload.user_id))
+        return
 
-                message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
-                await upvotes.delete_vote(payload.message_id, payload.channel_id, payload.user_id, check_equal_to=vote)
-                user = client.get_user(payload.user_id)
-                if user is None:
-                    user = await client.fetch_user(payload.user_id)
-                await upvotes.remove_extra_reactions(message, user, None)
+    await upvotes.delete_vote(payload.message_id, payload.channel_id, payload.user_id, check_equal_to=vote)
+    user = client.get_user(payload.user_id) or await client.fetch_user(payload.user_id)
+    await upvotes.remove_extra_reactions(message, user, None)
 
 @client.event
 async def on_slash_command_error(ctx: SlashContext, ex: Exception):
@@ -692,6 +687,7 @@ async def relocate_meme(ctx: MenuContext):
         files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
     # Repost the meme in the memes channel. Vote reactions will be automatically
     # added in the on_message() handler.
+    # noinspection PyArgumentList
     await webhook.send(
         content=ctx.target_message.content,
         files=files,
