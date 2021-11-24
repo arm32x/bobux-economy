@@ -121,7 +121,7 @@ async def on_ready():
     logging.info("Synchronizing votes...")
     await upvotes.sync_votes()
     logging.info("Starting subscriptions background task...")
-    asyncio.create_task(await subscriptions.run())
+    asyncio.create_task(subscriptions.run())
     logging.info("Ready!")
 
 @client.event
