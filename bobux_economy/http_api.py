@@ -33,9 +33,10 @@ async def handle_http_exception(ex: HTTPException):
 async def run():
     config = Config()
     config.bind = "0.0.0.0:42069"
-    config.accesslog = logging.getLogger("http_api")
+    app._logger = logging.getLogger("http_api")
+    config.accesslog = app.logger
     config.access_log_format = "%(m)s %(U)s -> %(s)s [from %(a)s @ %(h)s]"
-    config.errorlog = config.accesslog
+    config.errorlog = app.logger
 
     async def shutdown_trigger():
         # Wait for this coroutine to be cancelled
