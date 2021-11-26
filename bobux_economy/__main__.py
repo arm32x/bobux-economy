@@ -1,4 +1,16 @@
 """
+bobux economy v0.8.1
+  - fix strange embeds when relocating messages with Tenor GIFs
+  - '/changelog' now works again
+  - upvotes and downvotes can no longer be manually added to messages starting
+    with 💬 or 🗨️
+  - added '/relocate' command, which does the same thing as the 'Send to Memes
+    Channel' context menu command but with more options
+      - messages can now be relocated to other channels, not just the memes
+        channel
+      - added option to strip 💬 or 🗨️ from relocated messages (enabled for the
+        context menu command)
+
 bobux economy v0.8.0
   - added subscriptions, which allow purchasing certain roles for a weekly
     subscription fee
