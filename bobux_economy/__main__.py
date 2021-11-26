@@ -234,7 +234,14 @@ async def version(ctx: SlashContext):
     description="Show the changelog of the bot"
 )
 async def changelog(ctx: SlashContext):
-    await ctx.send(f"```{__doc__.strip()}```", hidden=True)
+    entries = __doc__.strip().split("\n\n")
+    page = ""
+    for entry in entries:
+        if len(page) + len(entry) + 8 > 1900:
+            break
+        else:
+            page += f"\n\n{entry}"  # Yes, I know str.join(list) is faster
+    await ctx.send(f"```{page}```\nFull changelog at <https://github.com/arm32x/bobux-economy/blob/master/bobux_economy/__main__.py>", hidden=True)
 
 
 @slash.subcommand(
