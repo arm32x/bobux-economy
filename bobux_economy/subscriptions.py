@@ -1,6 +1,5 @@
 import asyncio
 from contextlib import suppress
-
 from datetime import datetime, time, timedelta
 import logging
 from typing import *
@@ -8,6 +7,7 @@ from typing import *
 import discord
 
 import balance
+import errors
 from database import connection as db
 from globals import client
 
@@ -47,7 +47,7 @@ async def run():
 
             try:
                 balance.subtract(member, price, spare_change)
-            except balance.InsufficientFundsError:
+            except errors.InsufficientFunds:
                 role = guild.get_role(role_id)
                 with suppress(discord.Forbidden):
                     await unsubscribe(member, role, reason="Insufficient funds for paid subscription")

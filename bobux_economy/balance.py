@@ -3,16 +3,7 @@ import math
 import discord
 
 from database import connection as db
-from globals import CommandError
-
-
-class InsufficientFundsError(CommandError):
-    def __init__(self):
-        super().__init__("Insufficient funds")
-
-class NegativeAmountError(CommandError):
-    def __init__(self):
-        super().__init__("Amount must not be negative")
+import errors
 
 
 def get(member: discord.Member) -> (int, bool):
@@ -32,7 +23,7 @@ def set(member: discord.Member, amount: int, spare_change: bool):
 
 def add(member: discord.Member, amount: int, spare_change: bool):
     if amount < 0:
-        raise NegativeAmountError()
+        raise errors.NegativeAmount()
 
     balance, balance_spare_change = get(member)
 
@@ -45,12 +36,12 @@ def add(member: discord.Member, amount: int, spare_change: bool):
 
 def subtract(member: discord.Member, amount: int, spare_change: bool, allow_overdraft=False):
     if amount < 0:
-        raise NegativeAmountError()
+        raise errors.NegativeAmount()
 
     balance, balance_spare_change = get(member)
 
     if not allow_overdraft and balance < amount or balance == amount and spare_change and not balance_spare_change:
-        raise InsufficientFundsError()
+        raise errors.InsufficientFunds()
 
     balance -= amount
     if spare_change and not balance_spare_change:

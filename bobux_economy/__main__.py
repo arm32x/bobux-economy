@@ -106,7 +106,8 @@ from discord_slash.utils.manage_components import create_actionrow, create_butto
 import balance
 import database
 from database import connection as db
-from globals import client, slash, CommandError
+import errors
+from globals import client, slash
 import http_api
 import real_estate
 import subscriptions
@@ -198,7 +199,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
 @client.event
 async def on_slash_command_error(ctx: SlashContext, ex: Exception):
-    if isinstance(ex, CommandError):
+    if isinstance(ex, errors.Failed):
         logging.info("Sent error feedback")
         await ctx.send(f"**Error:** {ex}", hidden=True)
     raise ex
@@ -206,11 +207,11 @@ async def on_slash_command_error(ctx: SlashContext, ex: Exception):
 
 def check_author_can_manage_guild(ctx: InteractionContext):
     if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
-        raise CommandError("You must have Manage Server permissions to use this command")
+        raise errors.UserMissingPermissions("You must have Manage Server permissions to use this command")
 
 def check_author_can_manage_messages(ctx: InteractionContext):
     if not bool(ctx.author.permissions_in(ctx.channel).manage_messages):
-        raise CommandError("You must have Manage Messages permissions to use this command")
+        raise errors.UserMissingPermissions("You must have Manage Messages permissions to use this command")
 
 def check_author_has_admin_role(ctx: InteractionContext):
     c = db.cursor()
@@ -219,7 +220,7 @@ def check_author_has_admin_role(ctx: InteractionContext):
     admin_role = ctx.guild.get_role(row[0])
     if admin_role is not None:
         if not admin_role in ctx.author.roles:
-            raise CommandError(f"You must have the {admin_role.mention} role to use this command")
+            raise errors.UserMissingPermissions(f"You must have the {admin_role.mention} role to use this command")
     else:
         check_author_can_manage_guild(ctx)
 
@@ -285,7 +286,7 @@ async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = No
 async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if channel is not None and not isinstance(channel, discord.TextChannel):
-        raise CommandError("The memes channel must be a text channel")
+        raise errors.InvalidChannelType("The memes channel must be a text channel")
 
     channel_id = channel.id if channel is not None else None
     channel_mention = channel.mention if channel is not None else "None"
@@ -315,7 +316,7 @@ async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.
 async def config_real_estate_category(ctx: SlashContext, category: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if category is not None and not isinstance(category, discord.CategoryChannel):
-        raise CommandError("The real estate category must be a category")
+        raise errors.InvalidChannelType("The real estate category must be a category")
 
     category_id = category.id if category is not None else None
     category_mention = f"‘{category.name}’" if category is not None else "None"
@@ -643,7 +644,7 @@ async def real_estate_check_everyone(ctx: SlashContext):
 
 async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
     if message.channel.id == destination.id:
-        raise CommandError(f"Message already in {destination.mention}")
+        raise errors.MessageAlreadyInDestination(f"Message already in {destination.mention}")
 
     # Create a webhook that mimics the original poster
     target_author = message.author
@@ -656,13 +657,13 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
     except discord.Forbidden:
         # Check future requirements for a better error message
         if destination.guild.me.permissions_in(message.channel).manage_messages:
-            raise CommandError("The bot must have Manage Webhooks permissions to use this command")
+            raise errors.BotMissingPermissions("The bot must have Manage Webhooks permissions to use this command")
         else:
-            raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
+            raise errors.BotMissingPermissions("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
 
     # If the bot doesn't have Manage Messages permissions, this will fail later
     if not destination.guild.me.permissions_in(message.channel).manage_messages:
-        raise CommandError("The bot must have Manage Messages permissions to use this command")
+        raise errors.BotMissingPermissions("The bot must have Manage Messages permissions to use this command")
 
     # Get the attachments from the original message as uploadable files
     files = []
@@ -730,7 +731,7 @@ async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.
         remove_speech_bubbles = False
 
     if not isinstance(destination, discord.TextChannel):
-        raise CommandError(f"Destination channel must be a text channel")
+        raise errors.InvalidChannelType(f"Destination channel must be a text channel")
 
     message = await ctx.channel.fetch_message(int(message_id))
     await relocate_message(message, destination, remove_speech_bubbles=remove_speech_bubbles)
@@ -752,15 +753,15 @@ async def relocate_meme(ctx: MenuContext):
     """, (ctx.guild.id, ))
     memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
     if memes_channel_id is None:
-        raise CommandError("Memes channel is not configured")
+        raise errors.NotConfigured("Memes channel is not configured")
     # Use the channel ID to get a full channel object
     memes_channel: Optional[discord.abc.GuildChannel] = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
     if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
-        raise CommandError("The memes channel must be a text channel")
+        raise errors.InvalidChannelType("The memes channel must be a text channel")
 
     # Don't move messages already in the memes channel
     if ctx.target_message.channel.id == memes_channel_id:
-        raise CommandError("Message is already in the memes channel")
+        raise errors.MessageAlreadyInDestination("Message is already in the memes channel")
 
     await relocate_message(ctx.target_message, memes_channel, remove_speech_bubbles=True)
 
@@ -918,7 +919,7 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
 
     try:
         balance.subtract(ctx.author, *price)
-    except CommandError as ex:
+    except errors.Failed as ex:
         # The active context changed, so the global on_slash_command_error
         # handler will not work.
         await button_ctx.edit_origin(content=f"**Error:** {ex}", components=[])

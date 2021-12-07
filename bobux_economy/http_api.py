@@ -4,8 +4,10 @@ import logging
 
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
-from quart import request, Quart
+from quart import request, Quart, jsonify, make_response
 from werkzeug.exceptions import HTTPException
+
+import errors
 
 app = Quart(__name__)
 
@@ -20,7 +22,7 @@ async def hello():
 async def handle_http_exception(ex: HTTPException):
     response = ex.get_response()
     response.data = json.dumps({
-        "error": {
+        "http_error": {
             "code": ex.code,
             "name": ex.name,
             "description": ex.description
@@ -28,6 +30,16 @@ async def handle_http_exception(ex: HTTPException):
     })
     response.content_type = "application/json"
     return response
+
+@app.errorhandler(errors.Failed)
+async def handle_failure(ex: errors.Failed):
+    return make_response(jsonify({
+        "error": {
+            "type": type(ex).__name__,
+            "message": ex.message,
+            "http_status": ex.http_status
+        }
+    }), ex.http_status)
 
 
 async def run():
