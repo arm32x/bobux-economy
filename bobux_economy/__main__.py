@@ -95,23 +95,18 @@ import asyncio.tasks
 from datetime import datetime, timezone
 import logging
 import sqlite3
-from typing import *
+import sys
+from typing import cast, Dict, List, Literal, Optional, Tuple, Union
 
 import discord
-from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType, ButtonStyle
+from discord_slash import ButtonStyle, ContextMenuType, SlashCommandOptionType as OptionType, SlashContext
 from discord_slash.context import InteractionContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
 from discord_slash.utils.manage_components import create_actionrow, create_button, wait_for_component
 
-import balance
-import database
-from database import connection as db
-import errors
-from globals import client, slash
-import http_api
-import real_estate
-import subscriptions
-import upvotes
+from bobux_economy import balance, database, errors, http_api, real_estate, subscriptions, upvotes
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client, slash
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 
@@ -1078,7 +1073,7 @@ async def api_keys_revoke(ctx: SlashContext, index: int):
         raise errors.Failed(f"Could not revoke API key", 500)
 
 
-if __name__ == "__main__":
+def main():
     try:
         with open("data/token.txt", "r") as token_file:
             token = token_file.read()
@@ -1086,3 +1081,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Stopping...")
         db.close()
+
+if __name__ == "__main__":
+    sys.exit(main())

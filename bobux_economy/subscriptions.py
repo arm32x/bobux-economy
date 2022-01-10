@@ -2,14 +2,13 @@ import asyncio
 from contextlib import suppress
 from datetime import datetime, time, timedelta
 import logging
-from typing import *
+from typing import List, Tuple
 
 import discord
 
-import balance
-import errors
-from database import connection as db
-from globals import client
+from bobux_economy import balance, errors
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client
 
 # Charge subscriptions every minute for testing purposes
 DEBUG_TIMING = False

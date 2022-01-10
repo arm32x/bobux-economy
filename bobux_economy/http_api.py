@@ -1,23 +1,22 @@
 import asyncio
 import base64
 from dataclasses import dataclass
-import enum
 from enum import Enum
 import json
 import logging
 import secrets
-from typing import Literal, Optional, Tuple, List, Dict
+from typing import Dict, Optional, Tuple
 
 import bcrypt
 import discord
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
-from quart import request, Quart, jsonify, make_response
+from quart import jsonify, make_response, Quart, request
 from werkzeug.exceptions import HTTPException
 
-from database import connection as db
-import errors
-from globals import client
+from bobux_economy import errors
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client
 
 app = Quart(__name__)
 

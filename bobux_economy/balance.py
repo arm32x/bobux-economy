@@ -2,8 +2,8 @@ import math
 
 import discord
 
-from database import connection as db
-import errors
+from bobux_economy import errors
+from bobux_economy.database import connection as db
 
 
 def get(member: discord.Member) -> (int, bool):
