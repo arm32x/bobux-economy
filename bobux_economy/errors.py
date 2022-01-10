@@ -45,3 +45,8 @@ class InvalidChannelType(Failed):
 class MessageAlreadyInDestination(Failed):
     def __init__(self, message: str):
         super().__init__(message, 400)
+
+
+class ApiKeyNotFound(Failed):
+    def __init__(self, message: str):
+        super().__init__(message, 404)

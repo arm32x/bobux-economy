@@ -991,6 +991,93 @@ async def unsubscribe(ctx: SlashContext, role: discord.Role):
     await button_ctx.edit_origin(content=f"Unsubscribed from {role.mention}.", components=[])
 
 
+@slash.subcommand(
+    base="api_keys",
+    base_description="Manage your API keys",
+    name="create",
+    description="Create a new API key which grants access to your bobux economy account.",
+    options=[
+        create_option(
+            name="access_level",
+            option_type=OptionType.STRING,
+            description="The level of access to your account the API key will allow.",
+            required=True,
+            choices=[
+                {
+                    "name": "Read-Only - Can view, but not modify, your account balance and other data.",
+                    "value": "read_only"
+                },
+                {
+                    "name": "Read-Write - Can perform actions, like making payments, on your behalf.",
+                    "value": "read_write"
+                }
+            ]
+        ),
+        create_option(
+            name="label",
+            option_type=OptionType.STRING,
+            description="What will this API key be used for? Shown when listing your keys with '/api_key list'.",
+            required=True
+        )
+    ]
+)
+async def api_keys_create(ctx: SlashContext, access_level: Literal["read_only", "read_write"], label: str):
+    api_key = http_api.create_api_key(http_api.ApiKeyInfo(
+        ctx.author,
+        http_api.ApiAccessLevel(access_level),
+        label
+    ))
+
+    await ctx.send(f"Created {access_level.replace('_', '-')} API key: `{api_key}`\nMake sure to copy your API key now. You will not be able to see it again.", hidden=True)
+
+@slash.subcommand(
+    base="api_keys",
+    base_description="Manage your API keys",
+    name="list",
+    description="List all active API keys for your account."
+)
+async def api_keys_list(ctx: SlashContext):
+    api_keys = http_api.get_api_keys(ctx.author)
+
+    message_parts = [f"Active API keys for {ctx.author.mention}:"]
+    for index, hash_ in enumerate(sorted(api_keys.keys())):
+        info = api_keys[hash_]
+        message_parts.append(f"{index + 1}: {info.label} ({info.access_level.value.replace('_', '-')})")
+    await ctx.send("\n".join(message_parts), hidden=True)
+
+@slash.subcommand(
+    base="api_keys",
+    base_description="Manage your API keys",
+    name="revoke",
+    description="Revoke an API key, preventing it from being used in the future.",
+    options=[
+        create_option(
+            name="index",
+            option_type=OptionType.INTEGER,
+            description="The index of the API key to revoke, as it appears in /api_keys list.",
+            required=True
+        )
+    ]
+)
+async def api_keys_revoke(ctx: SlashContext, index: int):
+    api_keys = http_api.get_api_keys(ctx.author)
+
+    sorted_key_hashes = sorted(api_keys.keys())
+    try:
+        api_key_hash = sorted_key_hashes[index - 1]
+    except IndexError:
+        raise errors.ApiKeyNotFound(f"Index {index} not in your API key list")
+
+    api_key_info = http_api.revoke_api_key(ctx.author, api_key_hash)
+
+    if api_key_info is not None:
+        await ctx.send(f"Revoked {api_key_info.access_level.value.replace('_', '-')} API key: {api_key_info.label}", hidden=True)
+    else:
+        # This should never happen, as key hashes returned by get_api_keys()
+        # should always exist in the database
+        raise errors.Failed(f"Could not revoke API key", 500)
+
+
 if __name__ == "__main__":
     try:
         with open("data/token.txt", "r") as token_file:
