@@ -1,69 +1,14 @@
-import asyncio
 import base64
 from dataclasses import dataclass
 from enum import Enum
-import json
-import logging
 import secrets
 from typing import Dict, Optional, Tuple
 
 import bcrypt
 import discord
-from hypercorn.asyncio import serve
-from hypercorn.config import Config
-from quart import jsonify, make_response, Quart, request
-from werkzeug.exceptions import HTTPException
 
-from bobux_economy import errors
 from bobux_economy.database import connection as db
 from bobux_economy.globals import client
-
-app = Quart(__name__)
-
-
-@app.route("/", methods=["POST"])
-async def hello():
-    req = await request.get_json(force=True)
-    return req
-
-
-@app.errorhandler(HTTPException)
-async def handle_http_exception(ex: HTTPException):
-    response = ex.get_response()
-    response.data = json.dumps({
-        "http_error": {
-            "code": ex.code,
-            "name": ex.name,
-            "description": ex.description
-        }
-    })
-    response.content_type = "application/json"
-    return response
-
-@app.errorhandler(errors.Failed)
-async def handle_failure(ex: errors.Failed):
-    return make_response(jsonify({
-        "error": {
-            "type": type(ex).__name__,
-            "message": ex.message,
-            "http_status": ex.http_status
-        }
-    }), ex.http_status)
-
-
-async def run():
-    config = Config()
-    config.bind = "0.0.0.0:42069"
-    app._logger = logging.getLogger("http_api")
-    config.accesslog = app.logger
-    config.access_log_format = "%(m)s %(U)s -> %(s)s [from %(a)s @ %(h)s]"
-    config.errorlog = app.logger
-
-    async def shutdown_trigger():
-        # Wait for this coroutine to be cancelled
-        await asyncio.Event().wait()
-    await serve(app, config, shutdown_trigger=shutdown_trigger)
-
 
 class ApiAccessLevel(Enum):
     READ_ONLY = "read_only"
@@ -94,7 +39,7 @@ class ApiKeyInfo:
     label: str
 
 
-def create_api_key(key_info: ApiKeyInfo) -> str:
+def create(key_info: ApiKeyInfo) -> str:
     """
     Creates an API key and saves it to the database.
 
@@ -128,7 +73,7 @@ def create_api_key(key_info: ApiKeyInfo) -> str:
     return base64.b64encode(api_key_bytes).decode("ascii")
 
 
-async def get_api_key_info(api_key: str) -> Optional[ApiKeyInfo]:
+async def get_info(api_key: str) -> Optional[ApiKeyInfo]:
     """
     Returns the information associated with the given API key, or None if the
     API key is invalid.
@@ -162,7 +107,7 @@ async def get_api_key_info(api_key: str) -> Optional[ApiKeyInfo]:
     return None
 
 
-def get_api_keys(member: discord.Member) -> Dict[str, ApiKeyInfo]:
+def list_(member: discord.Member) -> Dict[str, ApiKeyInfo]:
     c = db.cursor()
     c.execute("""
         SELECT api_key_hash, access_level, label
@@ -179,7 +124,7 @@ def get_api_keys(member: discord.Member) -> Dict[str, ApiKeyInfo]:
     return results
 
 
-def revoke_api_key(member: discord.Member, api_key_hash: str) -> Optional[ApiKeyInfo]:
+def revoke(member: discord.Member, api_key_hash: str) -> Optional[ApiKeyInfo]:
     c = db.cursor()
     c.execute("""
         SELECT access_level, label FROM api_keys

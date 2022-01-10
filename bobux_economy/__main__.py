@@ -107,6 +107,7 @@ from discord_slash.utils.manage_components import create_actionrow, create_butto
 from bobux_economy import balance, database, errors, http_api, real_estate, subscriptions, upvotes
 from bobux_economy.database import connection as db
 from bobux_economy.globals import client, slash
+from bobux_economy.http_api import api_keys
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 
@@ -1017,9 +1018,9 @@ async def unsubscribe(ctx: SlashContext, role: discord.Role):
     ]
 )
 async def api_keys_create(ctx: SlashContext, access_level: Literal["read_only", "read_write"], label: str):
-    api_key = http_api.create_api_key(http_api.ApiKeyInfo(
+    api_key = api_keys.create(api_keys.ApiKeyInfo(
         ctx.author,
-        http_api.ApiAccessLevel(access_level),
+        api_keys.ApiAccessLevel(access_level),
         label
     ))
 
@@ -1032,11 +1033,11 @@ async def api_keys_create(ctx: SlashContext, access_level: Literal["read_only", 
     description="List all active API keys for your account."
 )
 async def api_keys_list(ctx: SlashContext):
-    api_keys = http_api.get_api_keys(ctx.author)
+    keys = api_keys.list_(ctx.author)
 
     message_parts = [f"Active API keys for {ctx.author.mention}:"]
-    for index, hash_ in enumerate(sorted(api_keys.keys())):
-        info = api_keys[hash_]
+    for index, hash_ in enumerate(sorted(keys.keys())):
+        info = keys[hash_]
         message_parts.append(f"{index + 1}: {info.label} ({info.access_level.value.replace('_', '-')})")
     await ctx.send("\n".join(message_parts), hidden=True)
 
@@ -1055,15 +1056,15 @@ async def api_keys_list(ctx: SlashContext):
     ]
 )
 async def api_keys_revoke(ctx: SlashContext, index: int):
-    api_keys = http_api.get_api_keys(ctx.author)
+    keys = api_keys.list_(ctx.author)
 
-    sorted_key_hashes = sorted(api_keys.keys())
+    sorted_key_hashes = sorted(keys.keys())
     try:
         api_key_hash = sorted_key_hashes[index - 1]
     except IndexError:
         raise errors.ApiKeyNotFound(f"Index {index} not in your API key list")
 
-    api_key_info = http_api.revoke_api_key(ctx.author, api_key_hash)
+    api_key_info = api_keys.revoke(ctx.author, api_key_hash)
 
     if api_key_info is not None:
         await ctx.send(f"Revoked {api_key_info.access_level.value.replace('_', '-')} API key: {api_key_info.label}", hidden=True)
