@@ -25,10 +25,12 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
     if bot_member is None:
         raise Exception("Could not get guild member for bot")
 
+    bot_is_administrator = bot_member.guild_permissions.administrator
+
     category = get_category(buyer.guild)
     permissions: Dict[Union[discord.Member, discord.Role], discord.PermissionOverwrite] = {
         # The bot can’t grant permission to manage permissions unless it is Administrator.
-        buyer: discord.PermissionOverwrite(manage_channels=True),
+        buyer: discord.PermissionOverwrite(manage_channels=True, manage_permissions=bot_is_administrator),
         bot_member: discord.PermissionOverwrite(view_channel=True, manage_channels=True, send_messages=False)
     }
     try:
