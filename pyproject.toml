@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "bobux-economy"
+version = "0.8.1"
+description = ""
+authors = ["arm32x <arm32.x@gmail.com>"]
+license = "GPL-3.0-only"
+# readme = "README.md"
+packages = [{include = "bobux_economy"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+"discord.py" = "==1.7.3"
+discord-py-interactions = "==3.0.2"
+yoyo-migrations = "==7.3.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
