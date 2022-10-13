@@ -2,8 +2,8 @@ import math
 
 import discord
 
-from database import connection as db
-from globals import CommandError
+from bobux_economy.database import connection as db
+from bobux_economy.globals import CommandError
 
 
 class InsufficientFundsError(CommandError):

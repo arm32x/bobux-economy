@@ -2,9 +2,9 @@ from typing import *
 
 import discord
 
-import balance
-from database import connection as db
-from globals import client, CommandError
+from bobux_economy import balance
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client, CommandError
 
 
 # PyCharm’s type checker is stupid and can’t figure out these enums.

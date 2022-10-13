@@ -7,9 +7,9 @@ from typing import *
 
 import discord
 
-import balance
-from database import connection as db
-from globals import client
+from bobux_economy import balance
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client
 
 # Charge subscriptions every minute for testing purposes
 DEBUG_TIMING = False

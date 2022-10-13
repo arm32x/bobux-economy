@@ -115,13 +115,13 @@ from discord_slash.context import InteractionContext, MenuContext
 from discord_slash.utils.manage_commands import create_option
 from discord_slash.utils.manage_components import create_actionrow, create_button, wait_for_component
 
-import balance
-import database
-from database import connection as db
-from globals import client, slash, CommandError
-import real_estate
-import subscriptions
-import upvotes
+from bobux_economy import balance
+from bobux_economy import database
+from bobux_economy.database import connection as db
+from bobux_economy.globals import client, slash, CommandError
+from bobux_economy import real_estate
+from bobux_economy import subscriptions
+from bobux_economy import upvotes
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 
