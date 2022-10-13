@@ -1,6 +1,6 @@
 import enum
 import logging
-from typing import *
+from typing import List, Optional, Tuple, Union
 
 import discord
 
@@ -18,6 +18,9 @@ class Vote(enum.IntEnum):
     DOWNVOTE = -1
 
 def message_eligible(message: discord.Message) -> bool:
+    if message.guild is None:
+        return False
+
     c = db.cursor()
     c.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
     memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
@@ -37,7 +40,7 @@ async def add_reactions(message: Union[discord.Message, discord.PartialMessage])
 
 recently_removed_reactions: List[Tuple[int, Vote, int]] = [ ]
 
-async def _user_reacted(message: discord.Message, user: discord.User, emoji: Union[discord.Emoji, discord.PartialEmoji, str]) -> bool:
+async def _user_reacted(message: discord.Message, user: Union[discord.User, discord.Member], emoji: Union[discord.Emoji, discord.PartialEmoji, str]) -> bool:
     for reaction in message.reactions:
         if reaction.emoji == emoji:
             async for reaction_user in reaction.users():
@@ -45,7 +48,7 @@ async def _user_reacted(message: discord.Message, user: discord.User, emoji: Uni
                     return True
     return False
 
-async def remove_extra_reactions(message: discord.Message, user: discord.User, vote: Optional[Vote]):
+async def remove_extra_reactions(message: discord.Message, user: Union[discord.User, discord.Member], vote: Optional[Vote]):
     logging.info("Removed extra reactions on message %d for member '%s'.", message.id, user.display_name)
 
     if vote != Vote.UPVOTE and await _user_reacted(message, user, UPVOTE_EMOJI):
@@ -117,7 +120,7 @@ async def _sync_message(message: discord.Message):
     c.execute("""
         SELECT member_id, vote FROM votes WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
-    deleted_rows: List[int, int] = c.fetchall()
+    deleted_rows: List[Tuple[int, int]] = c.fetchall()
     c.execute("""
         DELETE FROM votes WHERE message_id = ? AND channel_id = ?;
     """, (message.id, message.channel.id))
@@ -168,6 +171,8 @@ VOTER_REWARD = 2.5
 
 async def on_vote_raw(message_id: int, channel_id: int, member_id: int, old: Optional[Vote], new: Optional[Vote]):
     channel = client.get_channel(channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return
     partial_message = channel.get_partial_message(message_id)
     member = channel.guild.get_member(member_id) or await channel.guild.fetch_member(member_id)
     if member is None:

@@ -103,11 +103,11 @@ bobux economy v0.1.0
   - initial release
 """
 
-import asyncio.tasks
+import asyncio
 from datetime import datetime, timezone
 import logging
 import sqlite3
-from typing import *
+from typing import cast, Dict, List, Optional, Tuple, Union
 
 import discord
 from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType, ButtonStyle
@@ -155,8 +155,15 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if payload.user_id == client.user.id:
         # This reaction was added by the bot, ignore it.
         return
+    if payload.guild_id is None:
+        return
 
-    message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
+    channel = client.get_channel(payload.channel_id)
+    if not isinstance(channel, discord.abc.Messageable):
+        logging.error("Reaction added in non-messageable channel (how?)")
+        return
+
+    message = await channel.fetch_message(payload.message_id)
     if not upvotes.message_eligible(message):
         return
 
@@ -171,8 +178,14 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
 
     guild = client.get_guild(payload.guild_id) or message.guild
+    if guild is None:
+        return
 
-    if payload.user_id == (await upvotes.get_original_author(message, guild)).id:
+    original_author = await upvotes.get_original_author(message, guild)
+    if original_author is None:
+        return
+
+    if payload.user_id == original_author.id:
         # The poster voted on their own message.
         await upvotes.remove_extra_reactions(message, payload.member, None)
         return
@@ -186,7 +199,12 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
         # The removed reaction was from the bot.
         return
 
-    message = await client.get_channel(payload.channel_id).fetch_message(payload.message_id)
+    channel = client.get_channel(payload.channel_id)
+    if not isinstance(channel, discord.abc.Messageable):
+        logging.error("Reaction removed in non-messageable channel (how?)")
+        return
+    
+    message = await channel.fetch_message(payload.message_id)
     if not upvotes.message_eligible(message):
         return
 
@@ -214,18 +232,25 @@ async def on_slash_command_error(ctx: SlashContext, ex: Exception):
 
 
 def check_author_can_manage_guild(ctx: InteractionContext):
+    if not isinstance(ctx.channel, discord.abc.GuildChannel):
+        raise CommandError("This command does not work in DMs")
     if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
         raise CommandError("You must have Manage Server permissions to use this command")
 
 def check_author_can_manage_messages(ctx: InteractionContext):
+    if not isinstance(ctx.channel, discord.abc.GuildChannel):
+        raise CommandError("This command does not work in DMs")
     if not bool(ctx.author.permissions_in(ctx.channel).manage_messages):
         raise CommandError("You must have Manage Messages permissions to use this command")
 
 def check_author_has_admin_role(ctx: InteractionContext):
+    if ctx.guild is None or not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
-    row: Tuple[Optional[int]] = c.fetchone() or (None, )
-    admin_role = ctx.guild.get_role(row[0])
+    row: Tuple[Optional[int]] = c.fetchone()
+    admin_role = ctx.guild.get_role(row[0]) if row[0] is not None else None
     if admin_role is not None:
         if not admin_role in ctx.author.roles:
             raise CommandError(f"You must have the {admin_role.mention} role to use this command")
@@ -239,6 +264,8 @@ def check_author_has_admin_role(ctx: InteractionContext):
 )
 async def version(ctx: SlashContext):
     if ctx.invoked_subcommand is None:
+        if __doc__ is None:
+            raise CommandError("Unable to determine bot version")
         await ctx.send(__doc__.strip().partition("\n")[0].strip(), hidden=True)
 
 @slash.slash(
@@ -246,6 +273,9 @@ async def version(ctx: SlashContext):
     description="Show the changelog of the bot"
 )
 async def changelog(ctx: SlashContext):
+    if __doc__ is None:
+        raise CommandError("Unable to determine bot version")
+
     entries = __doc__.strip().split("\n\n")
     page = ""
     for entry in entries:
@@ -272,6 +302,8 @@ async def changelog(ctx: SlashContext):
 )
 async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = None):
     check_author_can_manage_guild(ctx)
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
 
     role_id = role.id if role is not None else None
     role_mention = role.mention if role is not None else "None"
@@ -300,6 +332,8 @@ async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = No
 )
 async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
     if channel is not None and not isinstance(channel, discord.TextChannel):
         raise CommandError("The memes channel must be a text channel")
 
@@ -330,6 +364,8 @@ async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.
 )
 async def config_real_estate_category(ctx: SlashContext, category: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
     if category is not None and not isinstance(category, discord.CategoryChannel):
         raise CommandError("The real estate category must be a category")
 
@@ -391,6 +427,9 @@ async def bal_check_context_menu(ctx: MenuContext):
     description="Check the balance of everyone in this server"
 )
 async def bal_check_everyone(ctx: SlashContext):
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("""
             SELECT id, balance, spare_change FROM members WHERE guild_id = ?
@@ -510,6 +549,9 @@ async def bal_subtract(ctx: SlashContext, target: discord.Member, amount: float)
     ]
 )
 async def pay(ctx: SlashContext, recipient: discord.Member, amount: float):
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+
     try:
         amount, spare_change = balance.from_float(float(amount))
         balance.subtract(ctx.author, amount, spare_change)
@@ -540,8 +582,10 @@ async def pay(ctx: SlashContext, recipient: discord.Member, amount: float):
     ]
 )
 async def real_estate_buy_text(ctx: SlashContext, name: str):
-    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.text), ctx.author, name)
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
 
+    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.text), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}")
 
 @slash.subcommand(
@@ -561,8 +605,10 @@ async def real_estate_buy_text(ctx: SlashContext, name: str):
     ]
 )
 async def real_estate_buy_voice(ctx: SlashContext, name: str):
-    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.voice), ctx.author, name)
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
 
+    channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.voice), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}")
 
 @slash.subcommand(
@@ -580,8 +626,10 @@ async def real_estate_buy_voice(ctx: SlashContext, name: str):
     ]
 )
 async def real_estate_sell(ctx: SlashContext, channel: Union[discord.TextChannel, discord.VoiceChannel]):
-    price = await real_estate.sell(channel, ctx.author)
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
 
+    price = await real_estate.sell(channel, ctx.author)
     await ctx.send(f"Sold ‘{channel.name}’ for {balance.to_string(*price)}")
 
 
@@ -640,6 +688,9 @@ async def real_estate_check_context_menu(ctx: MenuContext):
     description="Check the real estate holdings of everyone in this server"
 )
 async def real_estate_check_everyone(ctx: SlashContext):
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("""
             SELECT id, owner_id, purchase_time FROM purchased_channels WHERE guild_id = ?
@@ -660,6 +711,8 @@ async def real_estate_check_everyone(ctx: SlashContext):
 async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
     if message.channel.id == destination.id:
         raise CommandError(f"Message already in {destination.mention}")
+    if not isinstance(message.channel, discord.abc.GuildChannel):
+        raise CommandError("This command does not work in DMs")
 
     # Create a webhook that mimics the original poster
     target_author = message.author
@@ -741,6 +794,8 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
 )
 async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
     check_author_can_manage_messages(ctx)
+    if not isinstance(ctx.channel, discord.abc.GuildChannel):
+        raise CommandError("This command does not work in DMs")
 
     if remove_speech_bubbles is None:
         remove_speech_bubbles = False
@@ -758,8 +813,11 @@ async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.
     name="Send to Memes Channel"
 )
 async def relocate_meme(ctx: MenuContext):
-    # Make sure the user has appropriate permissions
     check_author_can_manage_messages(ctx)
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
+    if ctx.target_message is None:
+        raise CommandError("No message selected")
 
     # Get the memes channel ID from the database
     c = db.cursor()
@@ -770,7 +828,7 @@ async def relocate_meme(ctx: MenuContext):
     if memes_channel_id is None:
         raise CommandError("Memes channel is not configured")
     # Use the channel ID to get a full channel object
-    memes_channel: Optional[discord.abc.GuildChannel] = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
+    memes_channel = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
     if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
         raise CommandError("The memes channel must be a text channel")
 
@@ -805,6 +863,8 @@ async def relocate_meme(ctx: MenuContext):
 )
 async def subscriptions_new(ctx: SlashContext, role: discord.Role, price_per_week: Union[float, int]):
     check_author_has_admin_role(ctx)
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
 
     price, spare_change = balance.from_float(float(price_per_week))
 
@@ -858,6 +918,9 @@ async def subscriptions_delete(ctx: SlashContext, role: discord.Role):
     description="List available subscriptions"
 )
 async def subscriptions_list(ctx: SlashContext):
+    if ctx.guild is None:
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("""
         SELECT role_id, price, spare_change FROM available_subscriptions
@@ -892,6 +955,9 @@ async def subscriptions_list(ctx: SlashContext):
     ]
 )
 async def subscribe(ctx: SlashContext, role: discord.Role):
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("""
         SELECT price, spare_change FROM available_subscriptions
@@ -965,6 +1031,9 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
     ]
 )
 async def unsubscribe(ctx: SlashContext, role: discord.Role):
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+
     c = db.cursor()
     c.execute("""
         SELECT EXISTS(SELECT 1 FROM member_subscriptions WHERE member_id = ? AND role_id = ?);

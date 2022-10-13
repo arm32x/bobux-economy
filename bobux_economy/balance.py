@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 import discord
 
@@ -15,7 +16,7 @@ class NegativeAmountError(CommandError):
         super().__init__("Amount must not be negative")
 
 
-def get(member: discord.Member) -> (int, bool):
+def get(member: discord.Member) -> Tuple[int, bool]:
     c = db.cursor()
     c.execute("""
         SELECT balance, spare_change FROM members WHERE id = ? AND guild_id = ?;
@@ -60,18 +61,18 @@ def subtract(member: discord.Member, amount: int, spare_change: bool, allow_over
     set(member, balance, balance_spare_change)
 
 
-def from_float(amount: float) -> (int, bool):
+def from_float(amount: float) -> Tuple[int, bool]:
     return int(amount), not amount.is_integer()
 
-def from_float_floor(amount: float) -> (int, bool):
+def from_float_floor(amount: float) -> Tuple[int, bool]:
     rounded = math.floor(amount * 2) / 2
     return from_float(rounded)
 
-def from_float_ceil(amount: float) -> (int, bool):
+def from_float_ceil(amount: float) -> Tuple[int, bool]:
     rounded = math.ceil(amount * 2) / 2
     return from_float(rounded)
 
-def from_float_round(amount: float) -> (int, bool):
+def from_float_round(amount: float) -> Tuple[int, bool]:
     rounded = round(amount * 2) / 2
     return from_float(rounded)
 

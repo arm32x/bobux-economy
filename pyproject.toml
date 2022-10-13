@@ -13,6 +13,8 @@ python = "^3.9"
 discord-py-interactions = "==3.0.2"
 yoyo-migrations = "==7.3.2"
 
+[tool.poetry.group.dev.dependencies]
+"discord.py-stubs" = "==1.7.3"
 
 [build-system]
 requires = ["poetry-core"]

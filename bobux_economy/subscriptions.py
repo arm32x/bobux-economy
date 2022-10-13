@@ -3,7 +3,7 @@ from contextlib import suppress
 
 from datetime import datetime, time, timedelta
 import logging
-from typing import *
+from typing import List, Tuple
 
 import discord
 
@@ -49,9 +49,10 @@ async def run():
                 balance.subtract(member, price, spare_change)
             except balance.InsufficientFundsError:
                 role = guild.get_role(role_id)
-                with suppress(discord.Forbidden):
-                    await unsubscribe(member, role, reason="Insufficient funds for paid subscription")
-                logging.info(f"Automatically unsubscribed @{member.display_name}#{member.discriminator} from ‘{role.name}’ due to insufficient funds.")
+                if role is not None:
+                    with suppress(discord.Forbidden):
+                        await unsubscribe(member, role, reason="Insufficient funds for paid subscription")
+                    logging.info(f"Automatically unsubscribed @{member.display_name}#{member.discriminator} from ‘{role.name}’ due to insufficient funds.")
 
 
 async def subscribe(member: discord.Member, role: discord.Role, *, reason: str = "Subscribed to paid subscription"):
