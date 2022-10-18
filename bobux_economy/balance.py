@@ -1,7 +1,7 @@
 import math
 from typing import Tuple
 
-import discord
+import disnake as discord
 
 from bobux_economy.database import connection as db
 from bobux_economy.globals import CommandError

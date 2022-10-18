@@ -1,6 +1,7 @@
+import logging
 from typing import cast, Dict, Optional, Union
 
-import discord
+import disnake as discord
 
 from bobux_economy import balance
 from bobux_economy.database import connection as db
@@ -21,17 +22,13 @@ async def buy(channel_type: discord.ChannelType, buyer: discord.Member, name: st
 
     balance.subtract(buyer, *price)
 
-    bot_member = buyer.guild.get_member(client.user.id)
-    if bot_member is None:
-        raise Exception("Could not get guild member for bot")
-
-    bot_is_administrator = bot_member.guild_permissions.administrator
+    bot_is_administrator = buyer.guild.me.guild_permissions.administrator
 
     category = get_category(buyer.guild)
     permissions: Dict[Union[discord.Member, discord.Role], discord.PermissionOverwrite] = {
         # The bot can’t grant permission to manage permissions unless it is Administrator.
-        buyer: discord.PermissionOverwrite(manage_channels=True, manage_permissions=bot_is_administrator),
-        bot_member: discord.PermissionOverwrite(view_channel=True, manage_channels=True, send_messages=False)
+        buyer: discord.PermissionOverwrite(manage_channels=True, manage_permissions=(True if bot_is_administrator else None)),
+        buyer.guild.me: discord.PermissionOverwrite(view_channel=True, manage_channels=True, send_messages=False)
     }
     try:
         if channel_type is discord.ChannelType.text:

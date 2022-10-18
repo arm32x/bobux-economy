@@ -1,5 +1,4 @@
-import discord
-from discord_slash import SlashCommand
+from disnake.ext import commands
 
 
 class CommandError(RuntimeError):
@@ -9,6 +8,4 @@ class CommandError(RuntimeError):
         super().__init__(message)
 
 
-client = discord.Client()
-
-slash = SlashCommand(client, sync_commands=True)
+client = commands.InteractionBot(sync_commands=True, test_guilds=[766073081449545798])

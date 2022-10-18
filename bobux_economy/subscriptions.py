@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 import logging
 from typing import List, Tuple
 
-import discord
+import disnake as discord
 
 from bobux_economy import balance
 from bobux_economy.database import connection as db

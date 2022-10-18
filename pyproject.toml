@@ -8,13 +8,9 @@ license = "GPL-3.0-only"
 packages = [{include = "bobux_economy"}]
 
 [tool.poetry.dependencies]
+disnake = "^2.6.0"
 python = "^3.9"
-"discord.py" = "==1.7.3"
-discord-py-interactions = "==3.0.2"
-yoyo-migrations = "==7.3.2"
-
-[tool.poetry.group.dev.dependencies]
-"discord.py-stubs" = "==1.7.3"
+yoyo-migrations = "^7.3.2"
 
 [build-system]
 requires = ["poetry-core"]

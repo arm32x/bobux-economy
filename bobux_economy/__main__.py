@@ -106,22 +106,21 @@ bobux economy v0.1.0
 import asyncio
 from datetime import datetime, timezone
 import logging
+import random
 import sqlite3
 from typing import cast, Dict, List, Optional, Tuple, Union
 
-import discord
-from discord_slash import SlashContext, SlashCommandOptionType as OptionType, ContextMenuType, ButtonStyle
-from discord_slash.context import InteractionContext, MenuContext
-from discord_slash.utils.manage_commands import create_option
-from discord_slash.utils.manage_components import create_actionrow, create_button, wait_for_component
+import disnake as discord
+from disnake.ext.commands import CommandInvokeError
 
 from bobux_economy import balance
 from bobux_economy import database
 from bobux_economy.database import connection as db
-from bobux_economy.globals import client, slash, CommandError
+from bobux_economy.globals import client, CommandError
 from bobux_economy import real_estate
 from bobux_economy import subscriptions
 from bobux_economy import upvotes
+from bobux_economy import utils
 
 logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=logging.INFO)
 
@@ -223,34 +222,51 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     user = client.get_user(payload.user_id) or await client.fetch_user(payload.user_id)
     await upvotes.remove_extra_reactions(message, user, None)
 
-@client.event
-async def on_slash_command_error(ctx: SlashContext, ex: Exception):
+async def handle_interaction_error(ctx: discord.Interaction, ex: Exception):
+    if isinstance(ex, CommandInvokeError):
+        ex = ex.original
     if isinstance(ex, CommandError):
-        logging.info("Sent error feedback")
-        await ctx.send(f"**Error:** {ex}", hidden=True)
-    raise ex
+        await ctx.send(f"**Error:** {ex}", ephemeral=True)
+    else:
+        error_id = random.randint(0, 65535)
+        logging.error(f"Internal error {error_id}: {ex}", exc_info=ex)
+        await ctx.send(f"**Error:** An internal error has occurred. If reporting this error, please provide the error ID {error_id}.", ephemeral=True)
+    logging.info("Sent error feedback")
 
 
-def check_author_can_manage_guild(ctx: InteractionContext):
-    if not isinstance(ctx.channel, discord.abc.GuildChannel):
+@client.event
+async def on_slash_command_error(ctx: discord.ApplicationCommandInteraction, ex: Exception):
+    await handle_interaction_error(ctx, ex)
+
+@client.event
+async def on_user_command_error(ctx: discord.UserCommandInteraction, ex: Exception):
+    await handle_interaction_error(ctx, ex)
+
+@client.event
+async def on_message_command_error(ctx: discord.MessageCommandInteraction, ex: Exception):
+    await handle_interaction_error(ctx, ex)
+
+
+def check_author_can_manage_guild(ctx: discord.Interaction):
+    if not isinstance(ctx.channel, discord.abc.GuildChannel) or not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
-    if not bool(ctx.author.permissions_in(ctx.channel).manage_guild):
+    if not bool(ctx.channel.permissions_for(ctx.author).manage_guild):
         raise CommandError("You must have Manage Server permissions to use this command")
 
-def check_author_can_manage_messages(ctx: InteractionContext):
-    if not isinstance(ctx.channel, discord.abc.GuildChannel):
+def check_author_can_manage_messages(ctx: discord.Interaction):
+    if not isinstance(ctx.channel, discord.abc.GuildChannel) or not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
-    if not bool(ctx.author.permissions_in(ctx.channel).manage_messages):
+    if not bool(ctx.channel.permissions_for(ctx.author).manage_messages):
         raise CommandError("You must have Manage Messages permissions to use this command")
 
-def check_author_has_admin_role(ctx: InteractionContext):
+def check_author_has_admin_role(ctx: discord.Interaction):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
-    row: Tuple[Optional[int]] = c.fetchone()
-    admin_role = ctx.guild.get_role(row[0]) if row[0] is not None else None
+    row: Optional[Tuple[int]] = c.fetchone()
+    admin_role = ctx.guild.get_role(row[0]) if row is not None else None
     if admin_role is not None:
         if not admin_role in ctx.author.roles:
             raise CommandError(f"You must have the {admin_role.mention} role to use this command")
@@ -258,21 +274,20 @@ def check_author_has_admin_role(ctx: InteractionContext):
         check_author_can_manage_guild(ctx)
 
 
-@slash.slash(
+@client.slash_command(
     name="version",
     description="Check the version of the bot"
 )
-async def version(ctx: SlashContext):
-    if ctx.invoked_subcommand is None:
-        if __doc__ is None:
-            raise CommandError("Unable to determine bot version")
-        await ctx.send(__doc__.strip().partition("\n")[0].strip(), hidden=True)
+async def version(ctx: discord.ApplicationCommandInteraction):
+    if __doc__ is None:
+        raise CommandError("Unable to determine bot version")
+    await ctx.send(__doc__.strip().partition("\n")[0].strip(), ephemeral=True)
 
-@slash.slash(
+@client.slash_command(
     name="changelog",
     description="Show the changelog of the bot"
 )
-async def changelog(ctx: SlashContext):
+async def changelog(ctx: discord.ApplicationCommandInteraction):
     if __doc__ is None:
         raise CommandError("Unable to determine bot version")
 
@@ -283,24 +298,29 @@ async def changelog(ctx: SlashContext):
             break
         else:
             page += f"\n\n{entry}"  # Yes, I know str.join(list) is faster
-    await ctx.send(f"```{page}```\nFull changelog at <https://github.com/arm32x/bobux-economy/blob/master/bobux_economy/__main__.py>", hidden=True)
+    await ctx.send(f"```{page}```\nFull changelog at <https://github.com/arm32x/bobux-economy/blob/master/bobux_economy/__main__.py>", ephemeral=True)
 
 
-@slash.subcommand(
-    base="config",
-    base_description="Change the settings of the bot",
+@client.slash_command(
+    name="config",
+    description="Change the settings of the bot"
+)
+async def config(_: discord.ApplicationCommandInteraction):
+    pass
+
+@config.sub_command(
     name="admin_role",
     description="Change which role is required to modify balances",
     options=[
-        create_option(
+        discord.Option(
             name="role",
-            option_type=OptionType.ROLE,
+            type=discord.OptionType.role,
             description="The role to set, or blank to remove",
             required=False
         )
     ]
 )
-async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = None):
+async def config_admin_role(ctx: discord.ApplicationCommandInteraction, role: Optional[discord.Role] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
@@ -316,21 +336,19 @@ async def config_admin_role(ctx: SlashContext, role: Optional[discord.Role] = No
     db.commit()
     await ctx.send(f"Set admin role to {role_mention}")
 
-@slash.subcommand(
-    base="config",
-    base_description="Change the settings of the bot",
+@config.sub_command(
     name="memes_channel",
     description="Set the channel where upvote reactions are enabled",
     options=[
-        create_option(
+        discord.Option(
             name="channel",
-            option_type=OptionType.CHANNEL,
+            type=discord.OptionType.channel,
             description="The channel to set, or blank to remove",
             required=False
         )
     ]
 )
-async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.GuildChannel] = None):
+async def config_memes_channel(ctx: discord.ApplicationCommandInteraction, channel: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
@@ -348,21 +366,19 @@ async def config_memes_channel(ctx: SlashContext, channel: Optional[discord.abc.
     db.commit()
     await ctx.send(f"Set memes channel to {channel_mention}")
 
-@slash.subcommand(
-    base="config",
-    base_description="Change the settings of the bot",
+@config.sub_command(
     name="real_estate_category",
     description="Set the category where purchased real estate channels appear",
     options=[
-        create_option(
+        discord.Option(
             name="category",
-            option_type=OptionType.CHANNEL,
+            type=discord.OptionType.channel,
             description="The category to set, or blank to remove",
             required=False
         )
     ]
 )
-async def config_real_estate_category(ctx: SlashContext, category: Optional[discord.abc.GuildChannel] = None):
+async def config_real_estate_category(ctx: discord.ApplicationCommandInteraction, category: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
@@ -381,44 +397,57 @@ async def config_real_estate_category(ctx: SlashContext, category: Optional[disc
     await ctx.send(f"Set real estate category to {category_mention}")
 
 
-@slash.subcommand(
-    base="bal",
-    base_description="Manage account balances",
-    subcommand_group="check",
-    subcommand_group_description="Check the balance of yourself or someone else",
+@client.slash_command(
+    name="bal",
+    description="Manage account balances"
+)
+async def bal(_: discord.ApplicationCommandInteraction):
+    pass
+
+@bal.sub_command_group(
+    name="check",
+    description="Check the balance of yourself or someone else"
+)
+async def bal_check(_: discord.ApplicationCommandInteraction):
+    pass
+
+@bal_check.sub_command(
     name="self",
     description="Check your balance",
 )
-async def bal_check_self(ctx: SlashContext):
-    await bal_check_user.invoke(ctx, ctx.author)
+async def bal_check_self(ctx: discord.ApplicationCommandInteraction):
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+    await bal_check_user(ctx, ctx.author)
 
-@slash.subcommand(
-    base="bal",
-    subcommand_group="check",
-    subcommand_group_description="Check the balance of yourself or someone else",
+async def bal_check_user(ctx: discord.Interaction, target: discord.Member):
+    amount, spare_change = balance.get(target)
+    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}", ephemeral=True)
+
+@bal_check.sub_command(
     name="user",
     description="Check someone’s balance",
     options=[
-        create_option(
+        discord.Option(
             name="target",
-            option_type=OptionType.USER,
+            type=discord.OptionType.user,
             description="The user to check the balance of",
             required=True
         )
     ]
 )
-async def bal_check_user(ctx: InteractionContext, target: discord.Member):
-    amount, spare_change = balance.get(target)
-    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}", hidden=True)
+async def bal_check_user_cmd(ctx: discord.ApplicationCommandInteraction, target: discord.Member):
+    await bal_check_user(ctx, target)
 
-@slash.context_menu(
-    target=ContextMenuType.USER,
+@client.user_command(
     name="Check Balance"
 )
-async def bal_check_context_menu(ctx: MenuContext):
-    await bal_check_user.invoke(ctx, ctx.target_author)
+async def bal_check_context_menu(ctx: discord.UserCommandInteraction):
+    if not isinstance(ctx.target, discord.Member):
+        raise CommandError("This command does not work in DMs")
+    await bal_check_user(ctx, ctx.target)
 
-@slash.subcommand(
+@bal_check.sub_command(
     base="bal",
     base_description="Manage account balances",
     subcommand_group="check",
@@ -426,7 +455,7 @@ async def bal_check_context_menu(ctx: MenuContext):
     name="everyone",
     description="Check the balance of everyone in this server"
 )
-async def bal_check_everyone(ctx: SlashContext):
+async def bal_check_everyone(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
 
@@ -440,29 +469,31 @@ async def bal_check_everyone(ctx: SlashContext):
     message_parts = []
     for member_id, amount, spare_change in results:
         message_parts.append(f"<@{member_id}>: {balance.to_string(amount, spare_change)}")
-    await ctx.send("\n".join(message_parts), hidden=True)
 
-@slash.subcommand(
-    base="bal",
-    base_description="Manage account balances",
+    if len(message_parts) > 0:
+        await ctx.send("\n".join(message_parts), ephemeral=True)
+    else:
+        await ctx.send("No results")
+
+@bal.sub_command(
     name="set",
     description="Set someone’s balance",
     options=[
-        create_option(
+        discord.Option(
             name="target",
-            option_type=OptionType.USER,
+            type=discord.OptionType.user,
             description="The user to set the balance of",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="amount",
-            option_type=OptionType.FLOAT,
+            type=discord.OptionType.number,
             description="The new balance of the target",
             required=True
         )
     ]
 )
-async def bal_set(ctx: SlashContext, target: discord.Member, amount: float):
+async def bal_set(ctx: discord.ApplicationCommandInteraction, target: discord.Member, amount: float):
     check_author_has_admin_role(ctx)
 
     amount, spare_change = balance.from_float(float(amount))
@@ -471,27 +502,27 @@ async def bal_set(ctx: SlashContext, target: discord.Member, amount: float):
 
     await ctx.send(f"Set the balance of {target.mention} to {balance.to_string(amount, spare_change)}")
 
-@slash.subcommand(
+@bal.sub_command(
     base="bal",
     base_description="Manage account balances",
     name="add",
     description="Add bobux to someone’s balance",
     options=[
-        create_option(
+        discord.Option(
             name="target",
-            option_type=OptionType.USER,
+            type=discord.OptionType.user,
             description="The user whose balance will be added to",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="amount",
-            option_type=OptionType.FLOAT,
+            type=discord.OptionType.number,
             description="The amount to add to the target’s balance",
             required=True
         )
     ]
 )
-async def bal_add(ctx: SlashContext, target: discord.Member, amount: float):
+async def bal_add(ctx: discord.ApplicationCommandInteraction, target: discord.Member, amount: float):
     check_author_has_admin_role(ctx)
 
     amount, spare_change = balance.from_float(float(amount))
@@ -500,27 +531,25 @@ async def bal_add(ctx: SlashContext, target: discord.Member, amount: float):
 
     await ctx.send(f"Added {balance.to_string(amount, spare_change)} to {target.mention}’s balance")
 
-@slash.subcommand(
-    base="bal",
-    base_description="Manage account balances",
+@bal.sub_command(
     name="subtract",
     description="Subtract bobux from someone’s balance",
     options=[
-        create_option(
+        discord.Option(
             name="target",
-            option_type=OptionType.USER,
+            type=discord.OptionType.user,
             description="The user whose balance will be subtracted from",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="amount",
-            option_type=OptionType.FLOAT,
+            type=discord.OptionType.number,
             description="The amount to subtract from the target’s balance",
             required=True
         )
     ]
 )
-async def bal_subtract(ctx: SlashContext, target: discord.Member, amount: float):
+async def bal_subtract(ctx: discord.ApplicationCommandInteraction, target: discord.Member, amount: float):
     check_author_has_admin_role(ctx)
 
     amount, spare_change = balance.from_float(float(amount))
@@ -530,25 +559,25 @@ async def bal_subtract(ctx: SlashContext, target: discord.Member, amount: float)
     await ctx.send(f"Subtracted {balance.to_string(amount, spare_change)} from {target.mention}’s balance")
 
 
-@slash.slash(
+@client.slash_command(
     name="pay",
     description="Transfer bobux to someone",
     options=[
-        create_option(
+        discord.Option(
             name="recipient",
-            option_type=OptionType.USER,
+            type=discord.OptionType.user,
             description="The user to transfer bobux to",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="amount",
-            option_type=OptionType.FLOAT,
+            type=discord.OptionType.number,
             description="The amount to transfer to the recipient",
             required=True
         )
     ]
 )
-async def pay(ctx: SlashContext, recipient: discord.Member, amount: float):
+async def pay(ctx: discord.ApplicationCommandInteraction, recipient: discord.Member, amount: float):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
@@ -565,67 +594,71 @@ async def pay(ctx: SlashContext, recipient: discord.Member, amount: float):
     await ctx.send(f"Transferred {balance.to_string(amount, spare_change)} to {recipient.mention}")
 
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
-    subcommand_group="buy",
-    subcommand_group_description="Buy a real estate channel",
+@client.slash_command(
+    name="real_estate",
+    description="Manage your real estate"
+)
+async def real_estate_cmd(_: discord.ApplicationCommandInteraction):
+    pass
+
+@real_estate_cmd.sub_command_group(
+    name="buy",
+    description="Buy a real estate channel"
+)
+async def real_estate_buy(_: discord.ApplicationCommandInteraction):
+    pass
+
+@real_estate_buy.sub_command(
     name="text",
     description=f"Buy a text channel for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}",
     options=[
-        create_option(
+        discord.Option(
             name="name",
-            option_type=OptionType.STRING,
+            type=discord.OptionType.string,
             description="The name of the purchased channel",
             required=True
         )
     ]
 )
-async def real_estate_buy_text(ctx: SlashContext, name: str):
+async def real_estate_buy_text(ctx: discord.ApplicationCommandInteraction, name: str):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
     channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.text), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}")
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
-    subcommand_group="buy",
-    subcommand_group_description="Buy a real estate channel",
+@real_estate_buy.sub_command(
     name="voice",
     description=f"Buy a voice channel for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}",
     options=[
-        create_option(
+        discord.Option(
             name="name",
-            option_type=OptionType.STRING,
+            type=discord.OptionType.string,
             description="The name of the purchased channel",
             required=True
         )
     ]
 )
-async def real_estate_buy_voice(ctx: SlashContext, name: str):
+async def real_estate_buy_voice(ctx: discord.ApplicationCommandInteraction, name: str):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
     channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.voice), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}")
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
+@real_estate_cmd.sub_command(
     name="sell",
     description="Sell one of your channels for half its purchase price",
     options=[
-        create_option(
+        discord.Option(
             name="channel",
-            option_type=OptionType.CHANNEL,
+            type=discord.OptionType.channel,
             description="The channel to sell",
             required=True
         )
     ]
 )
-async def real_estate_sell(ctx: SlashContext, channel: Union[discord.TextChannel, discord.VoiceChannel]):
+async def real_estate_sell(ctx: discord.ApplicationCommandInteraction, channel: Union[discord.TextChannel, discord.VoiceChannel]):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
@@ -633,34 +666,23 @@ async def real_estate_sell(ctx: SlashContext, channel: Union[discord.TextChannel
     await ctx.send(f"Sold ‘{channel.name}’ for {balance.to_string(*price)}")
 
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
-    subcommand_group="check",
-    subcommand_group_description="Check the real estate holdings of yourself or someone else",
+@real_estate_cmd.sub_command_group(
+    name="check",
+    description="Check the real estate holdings of yourself or someone else"
+)
+async def real_estate_check(_: discord.ApplicationCommandInteraction):
+    pass
+
+@real_estate_check.sub_command(
     name="self",
     description="Check your real estate holdings"
 )
-async def real_estate_check_self(ctx: SlashContext):
-    await real_estate_check_user.invoke(ctx, ctx.author)
+async def real_estate_check_self(ctx: discord.ApplicationCommandInteraction):
+    if not isinstance(ctx.author, discord.Member):
+        raise CommandError("This command does not work in DMs")
+    await real_estate_check_user(ctx, ctx.author)
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
-    subcommand_group="check",
-    subcommand_group_description="Check the real estate holdings of yourself or someone else",
-    name="user",
-    description="Check someone’s real estate holdings",
-    options=[
-        create_option(
-            name="target",
-            option_type=OptionType.USER,
-            description="The user to check the real estate holdings of",
-            required=True
-        )
-    ]
-)
-async def real_estate_check_user(ctx: InteractionContext, target: discord.Member):
+async def real_estate_check_user(ctx: discord.Interaction, target: discord.Member):
     c = db.cursor()
     c.execute("""
             SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?;
@@ -670,24 +692,36 @@ async def real_estate_check_user(ctx: InteractionContext, target: discord.Member
     message_parts = [f"{target.mention}:"]
     for channel_id, purchase_time in results:
         message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
-    await ctx.send("\n".join(message_parts), hidden=True)
+    await ctx.send("\n".join(message_parts), ephemeral=True)
 
-@slash.context_menu(
-    target=ContextMenuType.USER,
+@real_estate_check.sub_command(
+    name="user",
+    description="Check someone’s real estate holdings",
+    options=[
+        discord.Option(
+            name="target",
+            type=discord.OptionType.user,
+            description="The user to check the real estate holdings of",
+            required=True
+        )
+    ]
+)
+async def real_estate_check_user_cmd(ctx: discord.ApplicationCommandInteraction, target: discord.Member):
+    await real_estate_check_user(ctx, target)
+
+@client.user_command(
     name="Check Real Estate"
 )
-async def real_estate_check_context_menu(ctx: MenuContext):
-    await real_estate_check_user.invoke(ctx, ctx.target_author)
+async def real_estate_check_context_menu(ctx: discord.UserCommandInteraction):
+    if not isinstance(ctx.target, discord.Member):
+        raise CommandError("This command does not work in DMs")
+    await real_estate_check_user(ctx, ctx.target)
 
-@slash.subcommand(
-    base="real_estate",
-    base_description="Manage your real estate",
-    subcommand_group="check",
-    subcommand_group_description="Check the real estate holdings of yourself or someone else",
+@real_estate_check.sub_command(
     name="everyone",
     description="Check the real estate holdings of everyone in this server"
 )
-async def real_estate_check_everyone(ctx: SlashContext):
+async def real_estate_check_everyone(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
 
@@ -705,7 +739,11 @@ async def real_estate_check_everyone(ctx: SlashContext):
             message_parts.append(f"<@{owner_id}>:")
             current_owner_id = owner_id
         message_parts.append(f"<#{channel_id}>: Purchased {purchase_time}.")
-    await ctx.send("\n".join(message_parts), hidden=True)
+
+    if len(message_parts) > 0:
+        await ctx.send("\n".join(message_parts), ephemeral=True)
+    else:
+        await ctx.send("No results", ephemeral=True)
 
 
 async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
@@ -719,18 +757,18 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
     try:
         webhook: discord.Webhook = await destination.create_webhook(
             name=target_author.display_name,
-            avatar=await target_author.avatar_url.read(),
+            avatar=await target_author.display_avatar.read(),
             reason=f"Puppeting user {target_author.id} in order to relocate a message"
         )
     except discord.Forbidden:
         # Check future requirements for a better error message
-        if destination.guild.me.permissions_in(message.channel).manage_messages:
+        if message.channel.permissions_for(destination.guild.me).manage_messages:
             raise CommandError("The bot must have Manage Webhooks permissions to use this command")
         else:
             raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
 
     # If the bot doesn't have Manage Messages permissions, this will fail later
-    if not destination.guild.me.permissions_in(message.channel).manage_messages:
+    if not message.channel.permissions_for(destination.guild.me).manage_messages:
         raise CommandError("The bot must have Manage Messages permissions to use this command")
 
     # Get the attachments from the original message as uploadable files
@@ -768,31 +806,31 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
     # Delete the webhook
     await webhook.delete(reason="Will no longer be used")
 
-@slash.slash(
+@client.slash_command(
     name="relocate",
     description="Move a message to a different channel",
     options=[
-        create_option(
+        discord.Option(
             name="message_id",
-            option_type=OptionType.STRING,
+            type=discord.OptionType.string,
             description="The ID of the message to relocate (slash commands don't support messages as parameters)",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="destination",
-            option_type=OptionType.CHANNEL,
+            type=discord.OptionType.channel,
             description="The channel to relocate the message to",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="remove_speech_bubbles",
-            option_type=OptionType.BOOLEAN,
+            type=discord.OptionType.boolean,
             description="Whether or not to remove 💬 or 🗨️ from the start of the message",
             required=False
         )
     ]
 )
-async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
+async def relocate(ctx: discord.ApplicationCommandInteraction, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
     check_author_can_manage_messages(ctx)
     if not isinstance(ctx.channel, discord.abc.GuildChannel):
         raise CommandError("This command does not work in DMs")
@@ -806,18 +844,15 @@ async def relocate(ctx: SlashContext, message_id: str, destination: discord.abc.
     message = await ctx.channel.fetch_message(int(message_id))
     await relocate_message(message, destination, remove_speech_bubbles=remove_speech_bubbles)
 
-    await ctx.send(f"Relocated message to {destination.mention}", hidden=True)
+    await ctx.send(f"Relocated message to {destination.mention}", ephemeral=True)
 
-@slash.context_menu(
-    target=ContextMenuType.MESSAGE,
+@client.message_command(
     name="Send to Memes Channel"
 )
-async def relocate_meme(ctx: MenuContext):
+async def relocate_meme(ctx: discord.MessageCommandInteraction):
     check_author_can_manage_messages(ctx)
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
-    if ctx.target_message is None:
-        raise CommandError("No message selected")
 
     # Get the memes channel ID from the database
     c = db.cursor()
@@ -833,35 +868,40 @@ async def relocate_meme(ctx: MenuContext):
         raise CommandError("The memes channel must be a text channel")
 
     # Don't move messages already in the memes channel
-    if ctx.target_message.channel.id == memes_channel_id:
+    if ctx.target.channel.id == memes_channel_id:
         raise CommandError("Message is already in the memes channel")
 
-    await relocate_message(ctx.target_message, memes_channel, remove_speech_bubbles=True)
+    await relocate_message(ctx.target, memes_channel, remove_speech_bubbles=True)
 
-    await ctx.send(f"Relocated message to {memes_channel.mention}", hidden=True)
+    await ctx.send(f"Relocated message to {memes_channel.mention}", ephemeral=True)
 
 
-@slash.subcommand(
-    base="subscriptions",
-    base_description="Manage paid subscriptions",
+@client.slash_command(
+    name="subscriptions",
+    description="Manage subscriptions"
+)
+async def subscriptions_cmd(_: discord.ApplicationCommandInteraction):
+    pass
+
+@subscriptions_cmd.sub_command(
     name="new",
     description="Create a new paid subscription in this server",
     options=[
-        create_option(
+        discord.Option(
             name="role",
-            option_type=OptionType.ROLE,
+            type=discord.OptionType.role,
             description="The role to grant to subscribers",
             required=True
         ),
-        create_option(
+        discord.Option(
             name="price_per_week",
-            option_type=OptionType.FLOAT,
+            type=discord.OptionType.number,
             description="The price of this subscription, charged weekly",
             required=True
         )
     ]
 )
-async def subscriptions_new(ctx: SlashContext, role: discord.Role, price_per_week: Union[float, int]):
+async def subscriptions_new(ctx: discord.ApplicationCommandInteraction, role: discord.Role, price_per_week: float):
     check_author_has_admin_role(ctx)
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
@@ -876,21 +916,19 @@ async def subscriptions_new(ctx: SlashContext, role: discord.Role, price_per_wee
 
     await ctx.send(f"Created subscription for role {role.mention} for {balance.to_string(price, spare_change)} per week")
 
-@slash.subcommand(
-    base="subscriptions",
-    base_description="Manage paid subscriptions",
+@subscriptions_cmd.sub_command_group(
     name="delete",
     description="Delete a paid subscription from this server. The role will not be revoked from current subscribers.",
     options=[
-        create_option(
+        discord.Option(
             name="role",
-            option_type=OptionType.ROLE,
+            type=discord.OptionType.role,
             description="The role of the subscription to delete",
             required=True
         )
     ]
 )
-async def subscriptions_delete(ctx: SlashContext, role: discord.Role):
+async def subscriptions_delete(ctx: discord.ApplicationCommandInteraction, role: discord.Role):
     check_author_has_admin_role(ctx)
 
     c = db.cursor()
@@ -909,15 +947,13 @@ async def subscriptions_delete(ctx: SlashContext, role: discord.Role):
     if existed:
         await ctx.send(f"Deleted subscription for role {role.mention}")
     else:
-        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+        await ctx.send(f"Subscription for role {role.mention} does not exist", ephemeral=True)
 
-@slash.subcommand(
-    base="subscriptions",
-    base_description="Manage paid subscriptions",
+@subscriptions_cmd.sub_command(
     name="list",
     description="List available subscriptions"
 )
-async def subscriptions_list(ctx: SlashContext):
+async def subscriptions_list(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
         raise CommandError("This command does not work in DMs")
 
@@ -940,21 +976,21 @@ async def subscriptions_list(ctx: SlashContext):
             subscribed_since = member_subscriptions[role_id].replace(tzinfo=timezone.utc).astimezone(None)
             part += f" (subscribed since {subscribed_since})"
         message_parts.append(part)
-    await ctx.send("\n".join(message_parts), hidden=True)
+    await ctx.send("\n".join(message_parts), ephemeral=True)
 
-@slash.slash(
+@client.slash_command(
     name="subscribe",
     description="Subscribe to a paid subscription",
     options=[
-        create_option(
+        discord.Option(
             name="role",
-            option_type=OptionType.ROLE,
+            type=discord.OptionType.role,
             description="The role of the subscription to subscribe to",
             required=True
         )
     ]
 )
-async def subscribe(ctx: SlashContext, role: discord.Role):
+async def subscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Role):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
@@ -965,7 +1001,7 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
     """, (role.id, ))
     price: Optional[Tuple[int, bool]] = c.fetchone()
     if price is None:
-        await ctx.send(f"Subscription for role {role.mention} does not exist", hidden=True)
+        await ctx.send(f"Subscription for role {role.mention} does not exist", ephemeral=True)
         return
 
     c.execute("""
@@ -973,17 +1009,17 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
     """, (ctx.author.id, role.id))
     already_subscribed: bool = c.fetchone()[0]
     if already_subscribed:
-        await ctx.send(f"You are already subscribed to {role.mention}", hidden=True)
+        await ctx.send(f"You are already subscribed to {role.mention}", ephemeral=True)
         return
 
-    action_row = create_actionrow(
-        create_button(
-            style=ButtonStyle.green,
+    action_row = discord.ui.ActionRow(
+        discord.ui.Button(
+            style=discord.ButtonStyle.green,
             label="Subscribe",
             custom_id="subscribe"
         ),
-        create_button(
-            style=ButtonStyle.gray,
+        discord.ui.Button(
+            style=discord.ButtonStyle.gray,
             label="Cancel",
             custom_id="cancel"
         )
@@ -991,11 +1027,11 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
     await ctx.send((
         f"Subscribe to {role.mention} for {balance.to_string(*price)} per week? "
         f"You will be charged for the first week immediately."
-    ), components=[action_row], hidden=True)
-    button_ctx = await wait_for_component(client, components=action_row)
+    ), components=[action_row], ephemeral=True)
+    button_ctx = await utils.wait_for_component(client, action_row)
 
-    if button_ctx.custom_id != "subscribe":
-        await button_ctx.edit_origin(content=f"Cancelled.", components=[])
+    if button_ctx.data.custom_id != "subscribe":
+        await button_ctx.response.edit_message(content=f"Cancelled.", components=[])
         return
 
     try:
@@ -1003,34 +1039,34 @@ async def subscribe(ctx: SlashContext, role: discord.Role):
     except CommandError as ex:
         # The active context changed, so the global on_slash_command_error
         # handler will not work.
-        await button_ctx.edit_origin(content=f"**Error:** {ex}", components=[])
+        await button_ctx.response.edit_message(content=f"**Error:** {ex}", components=[])
         raise ex
 
     try:
         await subscriptions.subscribe(ctx.author, role)
     except discord.Forbidden:
-        await button_ctx.edit_origin(content=(
+        await button_ctx.response.edit_message(content=(
             "**Error:** Missing permissions. Make sure the bot has the Manage "
             "Roles permission and the subscription role is below the bot’s "
             "highest role."
         ), components=[])
         return
 
-    await button_ctx.edit_origin(content=f"Subscribed to {role.mention}.", components=[])
+    await button_ctx.response.edit_message(content=f"Subscribed to {role.mention}.", components=[])
 
-@slash.slash(
+@client.slash_command(
     name="unsubscribe",
     description="Unsubscribe from a paid subscription",
     options=[
-        create_option(
+        discord.Option(
             name="role",
-            option_type=OptionType.ROLE,
+            type=discord.OptionType.role,
             description="The role of the subscription to unsubscribe from",
             required=True
         )
     ]
 )
-async def unsubscribe(ctx: SlashContext, role: discord.Role):
+async def unsubscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Role):
     if not isinstance(ctx.author, discord.Member):
         raise CommandError("This command does not work in DMs")
 
@@ -1040,39 +1076,39 @@ async def unsubscribe(ctx: SlashContext, role: discord.Role):
     """, (ctx.author.id, role.id))
     already_subscribed: bool = c.fetchone()[0]
     if not already_subscribed:
-        await ctx.send(f"You are not subscribed to {role.mention}", hidden=True)
+        await ctx.send(f"You are not subscribed to {role.mention}", ephemeral=True)
         return
 
-    action_row = create_actionrow(
-        create_button(
-            style=ButtonStyle.red,
+    action_row = discord.ui.ActionRow(
+        discord.ui.Button(
+            style=discord.ButtonStyle.red,
             label="Unsubscribe",
             custom_id="unsubscribe"
         ),
-        create_button(
-            style=ButtonStyle.gray,
+        discord.ui.Button(
+            style=discord.ButtonStyle.gray,
             label="Cancel",
             custom_id="cancel"
         )
     )
-    await ctx.send(f"Unsubscribe from {role.mention}?", components=[action_row], hidden=True)
-    button_ctx = await wait_for_component(client, components=action_row)
+    await ctx.send(f"Unsubscribe from {role.mention}?", components=[action_row], ephemeral=True)
+    button_ctx = await utils.wait_for_component(client, action_row)
 
-    if button_ctx.custom_id != "unsubscribe":
-        await button_ctx.edit_origin(content="Cancelled.", components=[])
+    if button_ctx.data.custom_id != "unsubscribe":
+        await button_ctx.response.edit_message(content="Cancelled.", components=[])
         return
 
     try:
         await subscriptions.unsubscribe(ctx.author, role)
     except discord.Forbidden:
-        await button_ctx.edit_origin(content=(
+        await button_ctx.response.edit_message(content=(
             "**Error:** Missing permissions. Make sure the bot has the Manage "
             "Roles permission and the subscription role is below the bot’s "
             "highest role."
         ), components=[])
         return
 
-    await button_ctx.edit_origin(content=f"Unsubscribed from {role.mention}.", components=[])
+    await button_ctx.response.edit_message(content=f"Unsubscribed from {role.mention}.", components=[])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ import enum
 import logging
 from typing import List, Optional, Tuple, Union
 
-import discord
+import disnake as discord
 
 from bobux_economy import balance
 from bobux_economy.database import connection as db
@@ -161,7 +161,7 @@ async def sync_votes():
     result: List[Tuple[int, int]] = c.fetchall()
     for channel_id, last_memes_message in result:
         channel = client.get_channel(channel_id)
-        if isinstance(channel, discord.TextChannel):
+        if isinstance(channel, discord.abc.Messageable):
             async for message in channel.history(after=discord.Object(last_memes_message)):
                 await _sync_message(message)
 
@@ -171,7 +171,7 @@ VOTER_REWARD = 2.5
 
 async def on_vote_raw(message_id: int, channel_id: int, member_id: int, old: Optional[Vote], new: Optional[Vote]):
     channel = client.get_channel(channel_id)
-    if not isinstance(channel, discord.TextChannel):
+    if not isinstance(channel, discord.abc.Messageable) or not isinstance(channel, discord.abc.GuildChannel):
         return
     partial_message = channel.get_partial_message(message_id)
     member = channel.guild.get_member(member_id) or await channel.guild.fetch_member(member_id)
