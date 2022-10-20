@@ -6,6 +6,7 @@ authors = ["arm32x <arm32.x@gmail.com>"]
 license = "GPL-3.0-only"
 # readme = "README.md"
 packages = [{include = "bobux_economy"}]
+include = ["data/changelog.txt"]
 
 [tool.poetry.dependencies]
 disnake = "^2.6.0"
