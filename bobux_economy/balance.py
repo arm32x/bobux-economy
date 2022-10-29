@@ -4,14 +4,14 @@ from typing import Tuple
 import disnake as discord
 
 from bobux_economy.database import connection as db
-from bobux_economy.globals import CommandError
+from bobux_economy.globals import UserFacingError
 
 
-class InsufficientFundsError(CommandError):
+class InsufficientFundsError(UserFacingError):
     def __init__(self):
         super().__init__("Insufficient funds")
 
-class NegativeAmountError(CommandError):
+class NegativeAmountError(UserFacingError):
     def __init__(self):
         super().__init__("Amount must not be negative")
 

@@ -11,7 +11,7 @@ from disnake.ext.commands import CommandInvokeError
 from bobux_economy import balance
 from bobux_economy import database
 from bobux_economy.database import connection as db
-from bobux_economy.globals import client, CommandError
+from bobux_economy.globals import client, UserFacingError
 from bobux_economy import real_estate
 from bobux_economy import subscriptions
 from bobux_economy import upvotes
@@ -120,7 +120,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 async def handle_interaction_error(ctx: discord.Interaction, ex: Exception):
     if isinstance(ex, CommandInvokeError):
         ex = ex.original
-    if isinstance(ex, CommandError):
+    if isinstance(ex, UserFacingError):
         await ctx.send(f"**Error:** {ex}", ephemeral=True)
     else:
         error_id = random.randint(0, 65535)
@@ -144,19 +144,19 @@ async def on_message_command_error(ctx: discord.MessageCommandInteraction, ex: E
 
 def check_author_can_manage_guild(ctx: discord.Interaction):
     if not isinstance(ctx.channel, discord.abc.GuildChannel) or not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     if not bool(ctx.channel.permissions_for(ctx.author).manage_guild):
-        raise CommandError("You must have Manage Server permissions to use this command")
+        raise UserFacingError("You must have Manage Server permissions to use this command")
 
 def check_author_can_manage_messages(ctx: discord.Interaction):
     if not isinstance(ctx.channel, discord.abc.GuildChannel) or not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     if not bool(ctx.channel.permissions_for(ctx.author).manage_messages):
-        raise CommandError("You must have Manage Messages permissions to use this command")
+        raise UserFacingError("You must have Manage Messages permissions to use this command")
 
 def check_author_has_admin_role(ctx: discord.Interaction):
     if ctx.guild is None or not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("SELECT admin_role FROM guilds WHERE id = ?;", (ctx.guild.id, ))
@@ -164,7 +164,7 @@ def check_author_has_admin_role(ctx: discord.Interaction):
     admin_role = ctx.guild.get_role(row[0]) if row is not None else None
     if admin_role is not None:
         if not admin_role in ctx.author.roles:
-            raise CommandError(f"You must have the {admin_role.mention} role to use this command")
+            raise UserFacingError(f"You must have the {admin_role.mention} role to use this command")
     else:
         check_author_can_manage_guild(ctx)
 
@@ -194,7 +194,7 @@ async def config(_: discord.ApplicationCommandInteraction):
 async def config_admin_role(ctx: discord.ApplicationCommandInteraction, role: Optional[discord.Role] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     role_id = role.id if role is not None else None
     role_mention = role.mention if role is not None else "None"
@@ -222,9 +222,9 @@ async def config_admin_role(ctx: discord.ApplicationCommandInteraction, role: Op
 async def config_memes_channel(ctx: discord.ApplicationCommandInteraction, channel: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     if channel is not None and not isinstance(channel, discord.TextChannel):
-        raise CommandError("The memes channel must be a text channel")
+        raise UserFacingError("The memes channel must be a text channel")
 
     channel_id = channel.id if channel is not None else None
     channel_mention = channel.mention if channel is not None else "None"
@@ -252,9 +252,9 @@ async def config_memes_channel(ctx: discord.ApplicationCommandInteraction, chann
 async def config_real_estate_category(ctx: discord.ApplicationCommandInteraction, category: Optional[discord.abc.GuildChannel] = None):
     check_author_can_manage_guild(ctx)
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     if category is not None and not isinstance(category, discord.CategoryChannel):
-        raise CommandError("The real estate category must be a category")
+        raise UserFacingError("The real estate category must be a category")
 
     category_id = category.id if category is not None else None
     category_mention = f"‘{category.name}’" if category is not None else "None"
@@ -288,7 +288,7 @@ async def bal_check(_: discord.ApplicationCommandInteraction):
 )
 async def bal_check_self(ctx: discord.ApplicationCommandInteraction):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     await bal_check_user(ctx, ctx.author)
 
 async def bal_check_user(ctx: discord.Interaction, target: discord.Member):
@@ -315,7 +315,7 @@ async def bal_check_user_cmd(ctx: discord.ApplicationCommandInteraction, target:
 )
 async def bal_check_context_menu(ctx: discord.UserCommandInteraction):
     if not isinstance(ctx.target, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     await bal_check_user(ctx, ctx.target)
 
 @bal_check.sub_command(
@@ -328,7 +328,7 @@ async def bal_check_context_menu(ctx: discord.UserCommandInteraction):
 )
 async def bal_check_everyone(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("""
@@ -450,7 +450,7 @@ async def bal_subtract(ctx: discord.ApplicationCommandInteraction, target: disco
 )
 async def pay(ctx: discord.ApplicationCommandInteraction, recipient: discord.Member, amount: float):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     try:
         amount, spare_change = balance.from_float(float(amount))
@@ -493,7 +493,7 @@ async def real_estate_buy(_: discord.ApplicationCommandInteraction):
 )
 async def real_estate_buy_text(ctx: discord.ApplicationCommandInteraction, name: str):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.text), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.text])}")
@@ -512,7 +512,7 @@ async def real_estate_buy_text(ctx: discord.ApplicationCommandInteraction, name:
 )
 async def real_estate_buy_voice(ctx: discord.ApplicationCommandInteraction, name: str):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     channel = await real_estate.buy(cast(discord.ChannelType, discord.ChannelType.voice), ctx.author, name)
     await ctx.send(f"Bought {channel.mention} for {balance.to_string(*real_estate.CHANNEL_PRICES[discord.ChannelType.voice])}")
@@ -531,7 +531,7 @@ async def real_estate_buy_voice(ctx: discord.ApplicationCommandInteraction, name
 )
 async def real_estate_sell(ctx: discord.ApplicationCommandInteraction, channel: Union[discord.TextChannel, discord.VoiceChannel]):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     price = await real_estate.sell(channel, ctx.author)
     await ctx.send(f"Sold ‘{channel.name}’ for {balance.to_string(*price)}")
@@ -550,7 +550,7 @@ async def real_estate_check(_: discord.ApplicationCommandInteraction):
 )
 async def real_estate_check_self(ctx: discord.ApplicationCommandInteraction):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     await real_estate_check_user(ctx, ctx.author)
 
 async def real_estate_check_user(ctx: discord.Interaction, target: discord.Member):
@@ -585,7 +585,7 @@ async def real_estate_check_user_cmd(ctx: discord.ApplicationCommandInteraction,
 )
 async def real_estate_check_context_menu(ctx: discord.UserCommandInteraction):
     if not isinstance(ctx.target, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
     await real_estate_check_user(ctx, ctx.target)
 
 @real_estate_check.sub_command(
@@ -594,7 +594,7 @@ async def real_estate_check_context_menu(ctx: discord.UserCommandInteraction):
 )
 async def real_estate_check_everyone(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("""
@@ -619,9 +619,9 @@ async def real_estate_check_everyone(ctx: discord.ApplicationCommandInteraction)
 
 async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
     if message.channel.id == destination.id:
-        raise CommandError(f"Message already in {destination.mention}")
+        raise UserFacingError(f"Message already in {destination.mention}")
     if not isinstance(message.channel, discord.abc.GuildChannel):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     # Create a webhook that mimics the original poster
     target_author = message.author
@@ -634,13 +634,13 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
     except discord.Forbidden:
         # Check future requirements for a better error message
         if message.channel.permissions_for(destination.guild.me).manage_messages:
-            raise CommandError("The bot must have Manage Webhooks permissions to use this command")
+            raise UserFacingError("The bot must have Manage Webhooks permissions to use this command")
         else:
-            raise CommandError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
+            raise UserFacingError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
 
     # If the bot doesn't have Manage Messages permissions, this will fail later
     if not message.channel.permissions_for(destination.guild.me).manage_messages:
-        raise CommandError("The bot must have Manage Messages permissions to use this command")
+        raise UserFacingError("The bot must have Manage Messages permissions to use this command")
 
     # Get the attachments from the original message as uploadable files
     files = []
@@ -704,13 +704,13 @@ async def relocate_message(message: discord.Message, destination: discord.TextCh
 async def relocate(ctx: discord.ApplicationCommandInteraction, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
     check_author_can_manage_messages(ctx)
     if not isinstance(ctx.channel, discord.abc.GuildChannel):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     if remove_speech_bubbles is None:
         remove_speech_bubbles = False
 
     if not isinstance(destination, discord.TextChannel):
-        raise CommandError(f"Destination channel must be a text channel")
+        raise UserFacingError(f"Destination channel must be a text channel")
 
     message = await ctx.channel.fetch_message(int(message_id))
     await relocate_message(message, destination, remove_speech_bubbles=remove_speech_bubbles)
@@ -723,7 +723,7 @@ async def relocate(ctx: discord.ApplicationCommandInteraction, message_id: str, 
 async def relocate_meme(ctx: discord.MessageCommandInteraction):
     check_author_can_manage_messages(ctx)
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     # Get the memes channel ID from the database
     c = db.cursor()
@@ -732,15 +732,15 @@ async def relocate_meme(ctx: discord.MessageCommandInteraction):
     """, (ctx.guild.id, ))
     memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
     if memes_channel_id is None:
-        raise CommandError("Memes channel is not configured")
+        raise UserFacingError("Memes channel is not configured")
     # Use the channel ID to get a full channel object
     memes_channel = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
     if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
-        raise CommandError("The memes channel must be a text channel")
+        raise UserFacingError("The memes channel must be a text channel")
 
     # Don't move messages already in the memes channel
     if ctx.target.channel.id == memes_channel_id:
-        raise CommandError("Message is already in the memes channel")
+        raise UserFacingError("Message is already in the memes channel")
 
     await relocate_message(ctx.target, memes_channel, remove_speech_bubbles=True)
 
@@ -775,7 +775,7 @@ async def subscriptions_cmd(_: discord.ApplicationCommandInteraction):
 async def subscriptions_new(ctx: discord.ApplicationCommandInteraction, role: discord.Role, price_per_week: float):
     check_author_has_admin_role(ctx)
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     price, spare_change = balance.from_float(float(price_per_week))
 
@@ -826,7 +826,7 @@ async def subscriptions_delete(ctx: discord.ApplicationCommandInteraction, role:
 )
 async def subscriptions_list(ctx: discord.ApplicationCommandInteraction):
     if ctx.guild is None:
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("""
@@ -863,7 +863,7 @@ async def subscriptions_list(ctx: discord.ApplicationCommandInteraction):
 )
 async def subscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Role):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("""
@@ -907,7 +907,7 @@ async def subscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Ro
 
     try:
         balance.subtract(ctx.author, *price)
-    except CommandError as ex:
+    except UserFacingError as ex:
         # The active context changed, so the global on_slash_command_error
         # handler will not work.
         await button_ctx.response.edit_message(content=f"**Error:** {ex}", components=[])
@@ -939,7 +939,7 @@ async def subscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Ro
 )
 async def unsubscribe(ctx: discord.ApplicationCommandInteraction, role: discord.Role):
     if not isinstance(ctx.author, discord.Member):
-        raise CommandError("This command does not work in DMs")
+        raise UserFacingError("This command does not work in DMs")
 
     c = db.cursor()
     c.execute("""

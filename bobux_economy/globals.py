@@ -1,7 +1,7 @@
 from disnake.ext import commands
 
 
-class CommandError(RuntimeError):
+class UserFacingError(RuntimeError):
     """An Exception type for user errors in commands, such as invalid input"""
 
     def __init__(self, message: str):
