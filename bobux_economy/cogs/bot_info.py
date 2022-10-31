@@ -17,17 +17,14 @@ class BotInfo(commands.Cog):
         with open("data/changelog.txt", "r") as changelog_file:
             self.changelog = changelog_file.read()
 
-
-    @commands.slash_command(
-        name="version",
-        description="Check the version of the bot"
-    )
+    @commands.slash_command(name="version", description="Check the version of the bot")
     async def slash_version(self, ctx: disnake.ApplicationCommandInteraction):
-        await ctx.send(self.changelog.strip().partition("\n")[0].strip(), ephemeral=True)
+        await ctx.send(
+            self.changelog.strip().partition("\n")[0].strip(), ephemeral=True
+        )
 
     @commands.slash_command(
-        name="changelog",
-        description="Show the changelog of the bot"
+        name="changelog", description="Show the changelog of the bot"
     )
     async def slash_changelog(self, ctx: disnake.ApplicationCommandInteraction):
         entries = self.changelog.strip().split("\n\n")
@@ -37,7 +34,10 @@ class BotInfo(commands.Cog):
                 break
             else:
                 page += f"\n\n{entry}"  # Yes, I know str.join(list) is faster
-        await ctx.send(f"```{page}```\nFull changelog at <https://github.com/arm32x/bobux-economy/blob/master/bobux_economy/data/changelog.txt>", ephemeral=True)
+        await ctx.send(
+            f"```{page}```\nFull changelog at <https://github.com/arm32x/bobux-economy/blob/master/bobux_economy/data/changelog.txt>",
+            ephemeral=True,
+        )
 
 
 def setup(bot: commands.InteractionBot):
