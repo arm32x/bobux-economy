@@ -22,6 +22,9 @@ logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=loggin
 logging.info("Initializing...")
 database.migrate()
 
+client.load_extension("bobux_economy.cogs.bot_info")
+client.load_extension("bobux_economy.cogs.config")
+
 @client.event
 async def on_ready():
     logging.info("Synchronizing votes...")
@@ -167,105 +170,6 @@ def check_author_has_admin_role(ctx: discord.Interaction):
             raise UserFacingError(f"You must have the {admin_role.mention} role to use this command")
     else:
         check_author_can_manage_guild(ctx)
-
-
-client.load_extension("bobux_economy.cogs.bot_info")
-
-
-@client.slash_command(
-    name="config",
-    description="Change the settings of the bot"
-)
-async def config(_: discord.ApplicationCommandInteraction):
-    pass
-
-@config.sub_command(
-    name="admin_role",
-    description="Change which role is required to modify balances",
-    options=[
-        discord.Option(
-            name="role",
-            type=discord.OptionType.role,
-            description="The role to set, or blank to remove",
-            required=False
-        )
-    ]
-)
-async def config_admin_role(ctx: discord.ApplicationCommandInteraction, role: Optional[discord.Role] = None):
-    check_author_can_manage_guild(ctx)
-    if ctx.guild is None:
-        raise UserFacingError("This command does not work in DMs")
-
-    role_id = role.id if role is not None else None
-    role_mention = role.mention if role is not None else "None"
-
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO guilds(id, admin_role) VALUES(?, ?)
-            ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role;
-    """, (ctx.guild.id, role_id))
-    db.commit()
-    await ctx.send(f"Set admin role to {role_mention}")
-
-@config.sub_command(
-    name="memes_channel",
-    description="Set the channel where upvote reactions are enabled",
-    options=[
-        discord.Option(
-            name="channel",
-            type=discord.OptionType.channel,
-            description="The channel to set, or blank to remove",
-            required=False
-        )
-    ]
-)
-async def config_memes_channel(ctx: discord.ApplicationCommandInteraction, channel: Optional[discord.abc.GuildChannel] = None):
-    check_author_can_manage_guild(ctx)
-    if ctx.guild is None:
-        raise UserFacingError("This command does not work in DMs")
-    if channel is not None and not isinstance(channel, discord.TextChannel):
-        raise UserFacingError("The memes channel must be a text channel")
-
-    channel_id = channel.id if channel is not None else None
-    channel_mention = channel.mention if channel is not None else "None"
-
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO guilds(id, memes_channel) VALUES(?, ?)
-            ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel;
-    """, (ctx.guild.id, channel_id))
-    db.commit()
-    await ctx.send(f"Set memes channel to {channel_mention}")
-
-@config.sub_command(
-    name="real_estate_category",
-    description="Set the category where purchased real estate channels appear",
-    options=[
-        discord.Option(
-            name="category",
-            type=discord.OptionType.channel,
-            description="The category to set, or blank to remove",
-            required=False
-        )
-    ]
-)
-async def config_real_estate_category(ctx: discord.ApplicationCommandInteraction, category: Optional[discord.abc.GuildChannel] = None):
-    check_author_can_manage_guild(ctx)
-    if ctx.guild is None:
-        raise UserFacingError("This command does not work in DMs")
-    if category is not None and not isinstance(category, discord.CategoryChannel):
-        raise UserFacingError("The real estate category must be a category")
-
-    category_id = category.id if category is not None else None
-    category_mention = f"‘{category.name}’" if category is not None else "None"
-
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO guilds(id, real_estate_category) VALUES(?, ?)
-            ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category;
-    """, (ctx.guild.id, category_id))
-    db.commit()
-    await ctx.send(f"Set real estate category to {category_mention}")
 
 
 @client.slash_command(
