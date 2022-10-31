@@ -19,16 +19,18 @@ class BotInfo(commands.Cog):
         with open("data/changelog.txt", "r") as changelog_file:
             self.changelog = changelog_file.read()
 
-    @commands.slash_command(name="version", description="Check the version of the bot")
+    @commands.slash_command(name="version")
     async def slash_version(self, ctx: disnake.ApplicationCommandInteraction):
+        """Check the version of the bot"""
+
         await ctx.send(
             self.changelog.strip().partition("\n")[0].strip(), ephemeral=True
         )
 
-    @commands.slash_command(
-        name="changelog", description="Show the changelog of the bot"
-    )
+    @commands.slash_command(name="changelog")
     async def slash_changelog(self, ctx: disnake.ApplicationCommandInteraction):
+        """Show the changelog of the bot"""
+
         entries = self.changelog.strip().split("\n\n")
         page = ""
         for entry in entries:
