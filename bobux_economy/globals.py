@@ -1,5 +1,8 @@
 from disnake.ext import commands
 
+from bobux_economy.bot import BobuxEconomyBot
+from bobux_economy.database import connection as db_connection
+
 
 class UserFacingError(RuntimeError):
     """An Exception type for user errors in commands, such as invalid input"""
@@ -8,4 +11,4 @@ class UserFacingError(RuntimeError):
         super().__init__(message)
 
 
-client = commands.InteractionBot(sync_commands=True, test_guilds=[766073081449545798])
+client = BobuxEconomyBot(db_connection, test_guilds=[766073081449545798])

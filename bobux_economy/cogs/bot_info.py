@@ -6,6 +6,8 @@ view the changelog for the bot.
 import disnake
 from disnake.ext import commands
 
+from bobux_economy.bot import BobuxEconomyBot
+
 
 class BotInfo(commands.Cog):
     bot: commands.InteractionBot
@@ -40,5 +42,5 @@ class BotInfo(commands.Cog):
         )
 
 
-def setup(bot: commands.InteractionBot):
+def setup(bot: BobuxEconomyBot):
     bot.add_cog(BotInfo(bot))
