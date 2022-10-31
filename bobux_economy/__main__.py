@@ -6,7 +6,7 @@ import sqlite3
 from typing import cast, Dict, List, Optional, Tuple, Union
 
 import disnake as discord
-from disnake.ext.commands import CommandInvokeError
+from disnake.ext import commands
 
 from bobux_economy import balance
 from bobux_economy import database
@@ -121,9 +121,9 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
     await upvotes.remove_extra_reactions(message, user, None)
 
 async def handle_interaction_error(ctx: discord.Interaction, ex: Exception):
-    if isinstance(ex, CommandInvokeError):
+    if isinstance(ex, commands.CommandInvokeError):
         ex = ex.original
-    if isinstance(ex, UserFacingError):
+    if isinstance(ex, (UserFacingError, commands.CommandError)):
         await ctx.send(f"**Error:** {ex}", ephemeral=True)
     else:
         error_id = random.randint(0, 65535)
