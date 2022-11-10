@@ -22,6 +22,7 @@ logging.basicConfig(format="%(levelname)8s [%(name)s] %(message)s", level=loggin
 logging.info("Initializing...")
 database.migrate()
 
+client.load_extension("bobux_economy.cogs.bal")
 client.load_extension("bobux_economy.cogs.bot_info")
 client.load_extension("bobux_economy.cogs.config")
 
@@ -172,83 +173,9 @@ def check_author_has_admin_role(ctx: discord.Interaction):
         check_author_can_manage_guild(ctx)
 
 
-@client.slash_command(
-    name="bal",
-    description="Manage account balances"
-)
-async def bal(_: discord.ApplicationCommandInteraction):
-    pass
-
-@bal.sub_command_group(
-    name="check",
-    description="Check the balance of yourself or someone else"
-)
-async def bal_check(_: discord.ApplicationCommandInteraction):
-    pass
-
-@bal_check.sub_command(
-    name="self",
-    description="Check your balance",
-)
-async def bal_check_self(ctx: discord.ApplicationCommandInteraction):
-    if not isinstance(ctx.author, discord.Member):
-        raise UserFacingError("This command does not work in DMs")
-    await bal_check_user(ctx, ctx.author)
-
-async def bal_check_user(ctx: discord.Interaction, target: discord.Member):
-    amount, spare_change = balance.get(target)
-    await ctx.send(f"{target.mention}: {balance.to_string(amount, spare_change)}", ephemeral=True)
-
-@bal_check.sub_command(
-    name="user",
-    description="Check someone’s balance",
-    options=[
-        discord.Option(
-            name="target",
-            type=discord.OptionType.user,
-            description="The user to check the balance of",
-            required=True
-        )
-    ]
-)
-async def bal_check_user_cmd(ctx: discord.ApplicationCommandInteraction, target: discord.Member):
-    await bal_check_user(ctx, target)
-
-@client.user_command(
-    name="Check Balance"
-)
-async def bal_check_context_menu(ctx: discord.UserCommandInteraction):
-    if not isinstance(ctx.target, discord.Member):
-        raise UserFacingError("This command does not work in DMs")
-    await bal_check_user(ctx, ctx.target)
-
-@bal_check.sub_command(
-    base="bal",
-    base_description="Manage account balances",
-    subcommand_group="check",
-    subcommand_group_description="Check the balance of yourself or someone else",
-    name="everyone",
-    description="Check the balance of everyone in this server"
-)
-async def bal_check_everyone(ctx: discord.ApplicationCommandInteraction):
-    if ctx.guild is None:
-        raise UserFacingError("This command does not work in DMs")
-
-    c = db.cursor()
-    c.execute("""
-            SELECT id, balance, spare_change FROM members WHERE guild_id = ?
-                ORDER BY balance DESC, spare_change DESC;
-        """, (ctx.guild.id, ))
-    results: List[Tuple[int, int, bool]] = c.fetchall()
-
-    message_parts = []
-    for member_id, amount, spare_change in results:
-        message_parts.append(f"<@{member_id}>: {balance.to_string(amount, spare_change)}")
-
-    if len(message_parts) > 0:
-        await ctx.send("\n".join(message_parts), ephemeral=True)
-    else:
-        await ctx.send("No results")
+# Ugly hack since the /bal root command has been moved to the cog but
+# some of the subcommands have not.
+bal = client.cogs["Bal"].slash_bal  # type: ignore
 
 @bal.sub_command(
     name="set",
