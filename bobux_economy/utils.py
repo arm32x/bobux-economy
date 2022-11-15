@@ -1,10 +1,10 @@
-from typing import List, Union
-
-import disnake as discord
+import disnake
 from disnake.ui import ActionRow, MessageUIComponent
 
 
-async def wait_for_component(client: discord.Client, action_row: ActionRow[MessageUIComponent]) -> discord.MessageInteraction:
+async def wait_for_component(
+    client: disnake.Client, action_row: ActionRow[MessageUIComponent]
+) -> disnake.MessageInteraction:
     """
     Waits for a component interaction. Only accepts interactions based
     on the custom ID of the component.
@@ -14,7 +14,7 @@ async def wait_for_component(client: discord.Client, action_row: ActionRow[Messa
 
     custom_ids = [c.custom_id for c in action_row.children if c.custom_id is not None]
 
-    def _check(ctx: discord.MessageInteraction):
+    def _check(ctx: disnake.MessageInteraction):
         return ctx.data.custom_id in custom_ids
 
     return await client.wait_for("message_interaction", check=_check)
