@@ -175,6 +175,7 @@ def check_author_has_admin_role(ctx: discord.Interaction):
 
 # Ugly hack since the /bal root command has been moved to the cog but
 # some of the subcommands have not.
+bal: commands.InvokableSlashCommand
 bal = client.cogs["Bal"].slash_bal  # type: ignore
 
 @bal.sub_command(
