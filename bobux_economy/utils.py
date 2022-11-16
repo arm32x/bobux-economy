@@ -29,6 +29,23 @@ async def wait_for_component(
     return await client.wait_for("message_interaction", check=_check)
 
 
+class MissingAdminRole(commands.CheckFailure):
+    """
+    Exception raised when the command invoker does not have the admin
+    role and it is required to run a command.
+
+    This inherits from disnake’s CheckFailure.
+    """
+
+    admin_role_id: int
+
+    def __init__(self, admin_role_id: int, *args):
+        self.admin_role_id = admin_role_id
+
+        message = f"You are missing <@&{admin_role_id}> role to run this command."
+        super().__init__(message, *args)
+
+
 def get_admin_role_id(
     db_connection: sqlite3.Connection, guild_id: int
 ) -> Optional[int]:
@@ -56,8 +73,12 @@ def has_admin_role() -> Callable[[T], T]:
 
         admin_role_id = get_admin_role_id(ctx.bot.db_connection, ctx.guild.id)
         if admin_role_id is not None:
-            return any(r.id == admin_role_id for r in ctx.author.roles)
+            if not any(r.id == admin_role_id for r in ctx.author.roles):
+                raise MissingAdminRole(admin_role_id)
         else:
-            return ctx.author.guild_permissions.manage_guild
+            if not ctx.author.guild_permissions.manage_guild:
+                raise commands.MissingPermissions(["manage_guild"])
+
+        return True
 
     return commands.check(predicate)
