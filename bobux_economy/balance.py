@@ -1,3 +1,4 @@
+from contextlib import closing
 import math
 from typing import Tuple
 
@@ -17,19 +18,21 @@ class NegativeAmountError(UserFacingError):
 
 
 def get(member: discord.Member) -> Tuple[int, bool]:
-    c = db.cursor()
-    c.execute("""
-        SELECT balance, spare_change FROM members WHERE id = ? AND guild_id = ?;
-    """, (member.id, member.guild.id))
-    return c.fetchone() or (0, False)
+    # TODO: Don't hardcode the database connection.
+    with closing(db.cursor()) as c:
+        c.execute("""
+            SELECT balance, spare_change FROM members WHERE id = ? AND guild_id = ?;
+        """, (member.id, member.guild.id))
+        return c.fetchone() or (0, False)
 
 def set(member: discord.Member, amount: int, spare_change: bool):
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO members(id, guild_id, balance, spare_change) VALUES(?, ?, ?, ?)
-            ON CONFLICT(id, guild_id) DO UPDATE SET balance = excluded.balance, spare_change = excluded.spare_change;
-    """, (member.id, member.guild.id, amount, spare_change))
-    db.commit()
+    # TODO: Don't hardcode the database connection.
+    with closing(db.cursor()) as c:
+        c.execute("""
+            INSERT INTO members(id, guild_id, balance, spare_change) VALUES(?, ?, ?, ?)
+                ON CONFLICT(id, guild_id) DO UPDATE SET balance = excluded.balance, spare_change = excluded.spare_change;
+        """, (member.id, member.guild.id, amount, spare_change))
+        db.commit()
 
 def add(member: discord.Member, amount: int, spare_change: bool):
     if amount < 0:
