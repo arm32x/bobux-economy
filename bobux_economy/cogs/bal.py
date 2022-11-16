@@ -5,7 +5,7 @@ from typing import cast
 import disnake
 from disnake.ext import commands
 
-from bobux_economy import balance
+from bobux_economy import balance, utils
 from bobux_economy.bot import BobuxEconomyBot
 
 
@@ -90,6 +90,116 @@ class Bal(commands.Cog):
             )
         else:
             await inter.response.send_message("No results", ephemeral=True)
+
+    @slash_bal.sub_command(name="set")
+    @utils.has_admin_role()
+    async def slash_bal_set(
+        self,
+        inter: disnake.GuildCommandInteraction,
+        target: disnake.Member,
+        amount: float,
+    ):
+        """
+        Set someone’s balance
+
+        Parameters
+        ----------
+        target: The user to set the balance of
+        amount: The new balance of the target
+        """
+
+        amount, spare_change = balance.from_float(amount)
+        balance.set(target, amount, spare_change)
+
+    @slash_bal.sub_command(name="add")
+    @utils.has_admin_role()
+    async def slash_bal_add(
+        self,
+        inter: disnake.GuildCommandInteraction,
+        target: disnake.Member,
+        amount: float,
+    ):
+        """
+        Add bobux to someone’s balance
+
+        Parameters
+        ----------
+        target: The user whose balance will be added to
+        amount: The amount to add to the target’s balance
+        """
+
+        amount, spare_change = balance.from_float(float(amount))
+        balance.add(target, amount, spare_change)
+
+        bobux_str = balance.to_string(amount, spare_change)
+        await inter.response.send_message(
+            f"Added {bobux_str} to {target.mention}’s balance",
+            allowed_mentions=disnake.AllowedMentions(
+                users=[target], roles=False, everyone=False, replied_user=False
+            ),
+        )
+
+    @slash_bal.sub_command(name="subtract")
+    @utils.has_admin_role()
+    async def slash_bal_subtract(
+        self,
+        inter: disnake.GuildCommandInteraction,
+        target: disnake.Member,
+        amount: float,
+    ):
+        """
+        Subtract bobux from someone’s balance
+
+        Parameters
+        ----------
+        target: The user whose balance will be subtracted from
+        amount: The amount to subtract from the target’s balance
+        """
+
+        amount, spare_change = balance.from_float(float(amount))
+        balance.subtract(target, amount, spare_change, allow_overdraft=True)
+
+        bobux_str = balance.to_string(amount, spare_change)
+        await inter.response.send_message(
+            f"Subtracted {bobux_str} from {target.mention}’s balance",
+            allowed_mentions=disnake.AllowedMentions(
+                users=[target], roles=False, everyone=False, replied_user=False
+            ),
+        )
+
+    @commands.slash_command(name="pay")
+    async def slash_pay(
+        self,
+        inter: disnake.GuildCommandInteraction,
+        recipient: disnake.Member,
+        amount: float,
+    ):
+        """
+        Transfer bobux to someone
+
+        Parameters
+        ----------
+        recipient: The user to transfer bobux to
+        amount: The amount to transfer to the recipient
+        """
+
+        # TODO: Figure out a nicer way to handle transactions.
+        try:
+            amount, spare_change = balance.from_float(amount)
+            balance.subtract(inter.author, amount, spare_change)
+            balance.add(recipient, amount, spare_change)
+        except sqlite3.Error:
+            self.bot.db_connection.rollback()
+            raise
+        self.bot.db_connection.commit()
+
+        bobux_str = balance.to_string(amount, spare_change)
+        await inter.response.send_message(
+            f"Transferred {bobux_str} to {recipient.mention}",
+            allowed_mentions=disnake.AllowedMentions(
+                users=[recipient], roles=False, everyone=False, replied_user=False
+            ),
+        )
 
 
 def setup(bot: BobuxEconomyBot):
