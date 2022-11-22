@@ -26,6 +26,7 @@ client.load_extension("bobux_economy.cogs.bal")
 client.load_extension("bobux_economy.cogs.bot_info")
 client.load_extension("bobux_economy.cogs.config")
 client.load_extension("bobux_economy.cogs.real_estate")
+client.load_extension("bobux_economy.cogs.relocate")
 
 @client.event
 async def on_ready():
@@ -172,136 +173,6 @@ def check_author_has_admin_role(ctx: discord.Interaction):
             raise UserFacingError(f"You must have the {admin_role.mention} role to use this command")
     else:
         check_author_can_manage_guild(ctx)
-
-
-async def relocate_message(message: discord.Message, destination: discord.TextChannel, remove_speech_bubbles: bool = False):
-    if message.channel.id == destination.id:
-        raise UserFacingError(f"Message already in {destination.mention}")
-    if not isinstance(message.channel, discord.abc.GuildChannel):
-        raise UserFacingError("This command does not work in DMs")
-
-    # Create a webhook that mimics the original poster
-    target_author = message.author
-    try:
-        webhook: discord.Webhook = await destination.create_webhook(
-            name=target_author.display_name,
-            avatar=await target_author.display_avatar.read(),
-            reason=f"Puppeting user {target_author.id} in order to relocate a message"
-        )
-    except discord.Forbidden:
-        # Check future requirements for a better error message
-        if message.channel.permissions_for(destination.guild.me).manage_messages:
-            raise UserFacingError("The bot must have Manage Webhooks permissions to use this command")
-        else:
-            raise UserFacingError("The bot must have Manage Webhooks and Manage Messages permissions to use this command")
-
-    # If the bot doesn't have Manage Messages permissions, this will fail later
-    if not message.channel.permissions_for(destination.guild.me).manage_messages:
-        raise UserFacingError("The bot must have Manage Messages permissions to use this command")
-
-    # Get the attachments from the original message as uploadable files
-    files = []
-    for attachment in message.attachments:
-        files.append(await attachment.to_file(spoiler=attachment.is_spoiler()))
-
-    # If requested, remove speech bubbles from the start of the message content
-    content = message.content
-    if remove_speech_bubbles:
-        if content.startswith("💬"):
-            content = content[1:].lstrip()
-        elif content.startswith("🗨️"):
-            content = content[2:].lstrip()
-
-    # Repost the meme in the memes channel. Vote reactions will be automatically
-    # added in the on_message() handler.
-    # noinspection PyArgumentList
-    await webhook.send(
-        content=content,
-        files=files,
-        # embeds=ctx.target_message.embeds,
-        allowed_mentions=discord.AllowedMentions.none(),
-        tts=message.tts
-    )
-    # Delete the original message using the bot API, not the interactions API
-    await discord.Message.delete(message)
-
-    # Permanently associate this webhook ID with the original poster
-    c = db.cursor()
-    c.execute("""
-        INSERT INTO webhooks VALUES(?, ?);
-    """, (webhook.id, target_author.id))
-    db.commit()
-    # Delete the webhook
-    await webhook.delete(reason="Will no longer be used")
-
-@client.slash_command(
-    name="relocate",
-    description="Move a message to a different channel",
-    options=[
-        discord.Option(
-            name="message_id",
-            type=discord.OptionType.string,
-            description="The ID of the message to relocate (slash commands don't support messages as parameters)",
-            required=True
-        ),
-        discord.Option(
-            name="destination",
-            type=discord.OptionType.channel,
-            description="The channel to relocate the message to",
-            required=True
-        ),
-        discord.Option(
-            name="remove_speech_bubbles",
-            type=discord.OptionType.boolean,
-            description="Whether or not to remove 💬 or 🗨️ from the start of the message",
-            required=False
-        )
-    ]
-)
-async def relocate(ctx: discord.ApplicationCommandInteraction, message_id: str, destination: discord.abc.GuildChannel, remove_speech_bubbles: Optional[bool] = None):
-    check_author_can_manage_messages(ctx)
-    if not isinstance(ctx.channel, discord.abc.GuildChannel):
-        raise UserFacingError("This command does not work in DMs")
-
-    if remove_speech_bubbles is None:
-        remove_speech_bubbles = False
-
-    if not isinstance(destination, discord.TextChannel):
-        raise UserFacingError(f"Destination channel must be a text channel")
-
-    message = await ctx.channel.fetch_message(int(message_id))
-    await relocate_message(message, destination, remove_speech_bubbles=remove_speech_bubbles)
-
-    await ctx.send(f"Relocated message to {destination.mention}", ephemeral=True)
-
-@client.message_command(
-    name="Send to Memes Channel"
-)
-async def relocate_meme(ctx: discord.MessageCommandInteraction):
-    check_author_can_manage_messages(ctx)
-    if ctx.guild is None:
-        raise UserFacingError("This command does not work in DMs")
-
-    # Get the memes channel ID from the database
-    c = db.cursor()
-    c.execute("""
-        SELECT memes_channel FROM guilds WHERE id = ?;
-    """, (ctx.guild.id, ))
-    memes_channel_id: Optional[int] = (c.fetchone() or (None, ))[0]
-    if memes_channel_id is None:
-        raise UserFacingError("Memes channel is not configured")
-    # Use the channel ID to get a full channel object
-    memes_channel = client.get_channel(memes_channel_id) or await client.fetch_channel(memes_channel_id)
-    if memes_channel is not None and not isinstance(memes_channel, discord.TextChannel):
-        raise UserFacingError("The memes channel must be a text channel")
-
-    # Don't move messages already in the memes channel
-    if ctx.target.channel.id == memes_channel_id:
-        raise UserFacingError("Message is already in the memes channel")
-
-    await relocate_message(ctx.target, memes_channel, remove_speech_bubbles=True)
-
-    await ctx.send(f"Relocated message to {memes_channel.mention}", ephemeral=True)
 
 
 @client.slash_command(
