@@ -127,7 +127,7 @@ class RealEstate(commands.Cog):
     @commands.user_command(name="Check Real Estate", dm_permission=False)
     @commands.guild_only()
     async def user_check_real_estate(self, inter: disnake.UserCommandInteraction):
-        await self._check_user_and_respond(inter, cast(disnake.Member, inter.user))
+        await self._check_user_and_respond(inter, cast(disnake.Member, inter.target))
 
     async def _check_user_and_respond(
         self, inter: disnake.Interaction, user: disnake.Member

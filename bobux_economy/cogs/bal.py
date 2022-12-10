@@ -46,7 +46,7 @@ class Bal(commands.Cog):
     @commands.user_command(name="Check Balance", dm_permission=False)
     @commands.guild_only()
     async def user_check_balance(self, inter: disnake.UserCommandInteraction):
-        await Bal._check_user_and_respond(inter, cast(disnake.Member, inter.user))
+        await Bal._check_user_and_respond(inter, cast(disnake.Member, inter.target))
 
     @staticmethod
     async def _check_user_and_respond(
