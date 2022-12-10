@@ -11,6 +11,7 @@ from disnake.ext import commands
 
 from bobux_economy import balance, subscriptions, utils
 from bobux_economy.bot import BobuxEconomyBot
+from bobux_economy.cogs.error_handling import ErrorHandling
 from bobux_economy.globals import UserFacingError
 
 
@@ -274,6 +275,9 @@ class Subscriptions(commands.Cog):
             balance.subtract(inter.author, price, spare_change)
             user_has_been_charged = True
             await subscriptions.subscribe(inter.author, role)
+            await button_inter.response.edit_message(
+                f"Subscribed to {role.mention}.", components=[]
+            )
         except Exception as ex:
             if isinstance(ex, disnake.Forbidden):
                 # We know the bot has the Manage Roles permission
@@ -284,31 +288,13 @@ class Subscriptions(commands.Cog):
                     f"**Error:** Role {role.mention} is above the bot’s highest role.",
                     components=[],
                 )
-            # This error handling code is currently a duplicate of the
-            # error handling code in __main__. It should not be.
-            # TODO: Factor out this logic so it's not a duplicate.
-            elif isinstance(ex, (commands.CommandError, UserFacingError)):
-                await button_inter.response.edit_message(
-                    f"**Error:** {ex}]", components=[]
-                )
             else:
-                error_id = random.randint(0, 65535)
-                logging.error(f"Internal error {error_id}: {ex}", exc_info=ex)
-                await button_inter.response.edit_message(
-                    (
-                        f"**Error:** An internal error has occurred. "
-                        f"If reporting this error, please provide the error ID {error_id}."
-                    ),
-                    components=[],
-                )
+                await ErrorHandling.edit_into_error_feedback(inter, ex)
+
             # Since there was an error, we need to refund the user if
             # they have already been charged.
             if user_has_been_charged:
                 balance.add(inter.author, price, spare_change)
-
-        await button_inter.response.edit_message(
-            f"Subscribed to {role.mention}.", components=[]
-        )
 
     @commands.slash_command(name="unsubscribe")
     @commands.bot_has_guild_permissions(manage_roles=True)
@@ -372,6 +358,9 @@ class Subscriptions(commands.Cog):
         # error here.
         try:
             await subscriptions.unsubscribe(inter.author, role)
+            await button_inter.response.edit_message(
+                f"Unsubscribed from {role.mention}.", components=[]
+            )
         except Exception as ex:
             if isinstance(ex, disnake.Forbidden):
                 # We know the bot has the Manage Roles permission
@@ -382,27 +371,8 @@ class Subscriptions(commands.Cog):
                     f"**Error:** Role {role.mention} is above the bot’s highest role.",
                     components=[],
                 )
-            # This error handling code is currently a duplicate of the
-            # error handling code in __main__. It should not be.
-            # TODO: Factor out this logic so it's not a duplicate.
-            elif isinstance(ex, (commands.CommandError, UserFacingError)):
-                await button_inter.response.edit_message(
-                    f"**Error:** {ex}]", components=[]
-                )
             else:
-                error_id = random.randint(0, 65535)
-                logging.error(f"Internal error {error_id}: {ex}", exc_info=ex)
-                await button_inter.response.edit_message(
-                    (
-                        f"**Error:** An internal error has occurred. "
-                        f"If reporting this error, please provide the error ID {error_id}."
-                    ),
-                    components=[],
-                )
-
-        await button_inter.response.edit_message(
-            f"Unsubscribed from {role.mention}.", components=[]
-        )
+                await ErrorHandling.edit_into_error_feedback(inter, ex)
 
 
 def setup(bot: BobuxEconomyBot):
