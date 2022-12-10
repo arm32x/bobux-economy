@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import closing
 from datetime import datetime, timezone
 import logging
@@ -35,6 +36,11 @@ class Subscriptions(commands.Cog):
 
     def __init__(self, bot: BobuxEconomyBot):
         self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        logging.info("Starting subscriptions background task...")
+        asyncio.create_task(subscriptions.run())
 
     @commands.slash_command(name="subscriptions")
     async def slash_subscriptions(self, _: disnake.GuildCommandInteraction):
