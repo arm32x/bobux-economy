@@ -1,6 +1,4 @@
-from contextlib import closing
-import sqlite3
-from typing import Optional, Union
+from typing import Union
 
 import disnake
 from disnake.ext import commands
@@ -83,11 +81,11 @@ class Relocate(commands.Cog):
         ):
             raise commands.errors.NoPrivateMessage()
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 "SELECT memes_channel FROM guilds WHERE id = ?", (inter.guild.id,)
             )
-            row: Optional[sqlite3.Row] = db_cursor.fetchone()
+            row = await db_cursor.fetchone()
 
         if row is None or row["memes_channel"] is None:
             raise commands.errors.CommandError(
@@ -165,12 +163,12 @@ class Relocate(commands.Cog):
 
         # Permanently associate this webhook ID with the original
         # poster.
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 "INSERT INTO webhooks VALUES(?, ?)",
                 (webhook.id, target_author.id),
             )
-            self.bot.db_connection.commit()
+            await self.bot.db_connection.commit()
 
         # Delete the webhook
         await webhook.delete(reason="Will no longer be used")

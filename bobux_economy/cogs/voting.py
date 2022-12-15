@@ -1,5 +1,4 @@
 import logging
-from contextlib import closing
 
 import disnake
 from disnake.ext import commands
@@ -26,10 +25,10 @@ class Voting(commands.Cog):
         if message.author == self.bot.user or message.guild is None:
             return
 
-        if upvotes.message_eligible(self.bot.db_connection, message):
+        if await upvotes.message_eligible(self.bot.db_connection, message):
             await upvotes.add_reactions(message)
-            with closing(self.bot.db_connection.cursor()) as db_cursor:
-                db_cursor.execute(
+            async with self.bot.db_connection.cursor() as db_cursor:
+                await db_cursor.execute(
                     """
                     INSERT INTO
                         guilds (id, last_memes_message)
@@ -41,7 +40,7 @@ class Voting(commands.Cog):
                     """,
                     (message.guild.id, message.id),
                 )
-                self.bot.db_connection.commit()
+                await self.bot.db_connection.commit()
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: disnake.RawReactionActionEvent):
@@ -57,7 +56,7 @@ class Voting(commands.Cog):
             return
 
         message = await channel.fetch_message(payload.message_id)
-        if not upvotes.message_eligible(self.bot.db_connection, message):
+        if not await upvotes.message_eligible(self.bot.db_connection, message):
             return
 
         if payload.member is None:
@@ -102,7 +101,7 @@ class Voting(commands.Cog):
             return
 
         message = await channel.fetch_message(payload.message_id)
-        if not upvotes.message_eligible(self.bot.db_connection, message):
+        if not await upvotes.message_eligible(self.bot.db_connection, message):
             return
 
         if payload.emoji.name == upvotes.UPVOTE_EMOJI:

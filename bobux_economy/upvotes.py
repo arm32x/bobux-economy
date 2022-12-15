@@ -1,9 +1,8 @@
-from contextlib import closing
 import enum
 import logging
-import sqlite3
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
+import aiosqlite
 import disnake as disnake
 
 from bobux_economy import balance
@@ -18,17 +17,17 @@ class Vote(enum.IntEnum):
     UPVOTE = 1
     DOWNVOTE = -1
 
-def message_eligible(db_connection: sqlite3.Connection, message: disnake.Message) -> bool:
+async def message_eligible(db_connection: aiosqlite.Connection, message: disnake.Message) -> bool:
     if message.guild is None:
         return False
 
-    with closing(db_connection.cursor()) as db_cursor:
-        db_cursor.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
-        memes_channel_id: Optional[int] = (db_cursor.fetchone() or (None, ))[0]
+    async with db_connection.cursor() as db_cursor:
+        await db_cursor.execute("SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id, ))
+        row = await db_cursor.fetchone()
 
     return (
-        memes_channel_id is not None
-        and message.channel.id == memes_channel_id
+        row is not None
+        and message.channel.id == row["memes_channel"]
         and not message.content.startswith("💬")
         and not message.content.startswith("🗨️")
     )
@@ -61,14 +60,15 @@ async def remove_extra_reactions(message: disnake.Message, user: Union[disnake.U
 
 
 async def record_vote(bot: BobuxEconomyBot, message_id: int, channel_id: int, member_id: int, vote: Vote, commit: bool = True, event: bool = True):
-    with closing(bot.db_connection.cursor()) as db_cursor:
-        db_cursor.execute("""
+    async with bot.db_connection.cursor() as db_cursor:
+        await db_cursor.execute("""
             SELECT vote FROM votes WHERE message_id = ? AND channel_id = ? AND member_id = ?;
         """, (message_id, channel_id, member_id))
-        previous_vote_code: Optional[int] = (db_cursor.fetchone() or (None, ))[0]
-        previous_vote: Optional[Vote] = Vote(previous_vote_code) if previous_vote_code is not None else None
+        row = await db_cursor.fetchone()
 
-        db_cursor.execute("""
+        previous_vote: Optional[Vote] = Vote(row["vote"]) if row is not None else None
+
+        await db_cursor.execute("""
             INSERT INTO votes(message_id, channel_id, member_id, vote) VALUES (?, ?, ?, ?)
                 ON CONFLICT(message_id, member_id) DO UPDATE SET vote = excluded.vote;
         """, (message_id, channel_id, member_id, vote))
@@ -79,55 +79,62 @@ async def record_vote(bot: BobuxEconomyBot, message_id: int, channel_id: int, me
         await on_vote_raw(bot, message_id, channel_id, member_id, previous_vote, vote)
 
     if commit:
-        bot.db_connection.commit()
+        await bot.db_connection.commit()
 
 async def delete_vote(bot: BobuxEconomyBot, message_id: int, channel_id: int, member_id: int, check_equal_to: Optional[Vote] = None, commit: bool = True, event: bool = True):
-    with closing(bot.db_connection.cursor()) as db_cursor:
+    async with bot.db_connection.cursor() as db_cursor:
         if check_equal_to is not None:
-            db_cursor.execute("""
+            await db_cursor.execute("""
                 SELECT vote FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
             """, (message_id, member_id, check_equal_to))
-            previous_vote: Optional[int] = (db_cursor.fetchone() or (None, ))[0]
-            db_cursor.execute("""
+            row = await db_cursor.fetchone()
+
+            previous_vote: Optional[Vote] = Vote(row["vote"]) if row is not None else None
+
+            await db_cursor.execute("""
                 DELETE FROM votes WHERE message_id = ? AND member_id = ? AND vote = ?;
             """, (message_id, member_id, check_equal_to))
 
             if event:
                 if previous_vote is not None:
-                    await on_vote_raw(bot, message_id, channel_id, member_id, Vote(previous_vote), None)
+                    await on_vote_raw(bot, message_id, channel_id, member_id, previous_vote, None)
 
             if commit:
-                bot.db_connection.commit()
+                await bot.db_connection.commit()
             logging.info("Removed vote by member %d on message %d, if it was %s.", member_id, message_id, "an upvote" if check_equal_to == Vote.UPVOTE else "a downvote")
 
         else:
-            db_cursor.execute("""
+            await db_cursor.execute("""
                 SELECT vote FROM votes WHERE message_id = ? AND member_id = ?;
             """, (message_id, member_id))
-            previous_vote: Optional[int] = (db_cursor.fetchone() or (None, ))[0]
-            db_cursor.execute("""
+            row = await db_cursor.fetchone()
+
+            previous_vote: Optional[Vote] = Vote(row["vote"]) if row is not None else None
+
+            await db_cursor.execute("""
                 DELETE FROM votes WHERE message_id = ? AND member_id = ?;
             """, (message_id, member_id))
 
             if event:
                 if previous_vote is not None:
-                    await on_vote_raw(bot, message_id, channel_id, member_id, Vote(previous_vote), None)
+                    await on_vote_raw(bot, message_id, channel_id, member_id, previous_vote, None)
 
             if commit:
-                bot.db_connection.commit()
+                await bot.db_connection.commit()
             logging.info("Removed vote by member %d on message %d.", member_id, message_id)
 
 
 async def _sync_message(bot: BobuxEconomyBot, message: disnake.Message):
-    with closing(bot.db_connection.cursor()) as db_cursor:
-        db_cursor.execute("""
+    async with bot.db_connection.cursor() as db_cursor:
+        await db_cursor.execute("""
             SELECT member_id, vote FROM votes WHERE message_id = ? AND channel_id = ?;
         """, (message.id, message.channel.id))
-        deleted_rows: List[Tuple[int, int]] = db_cursor.fetchall()
-        db_cursor.execute("""
+        deleted_rows = await db_cursor.fetchall()
+
+        await db_cursor.execute("""
             DELETE FROM votes WHERE message_id = ? AND channel_id = ?;
         """, (message.id, message.channel.id))
-        previous_votes = dict([ (u, Vote(v)) for (u, v) in deleted_rows ]) if deleted_rows is not None else { }
+        previous_votes: Dict[int, Vote] = { row["member_id"]: Vote(row["vote"]) for row in deleted_rows } if deleted_rows is not None else { }
 
     await add_reactions(message)
     for reaction in message.reactions:
@@ -143,10 +150,10 @@ async def _sync_message(bot: BobuxEconomyBot, message: disnake.Message):
                     if user != bot.user:
                         await record_vote(bot, message.id, message.channel.id, user.id, vote, commit=False, event=False)
                         await on_vote_raw(bot, message.id, message.channel.id, user.id, previous_votes.get(user.id), vote)
-    bot.db_connection.commit()
+    await bot.db_connection.commit()
 
 async def sync_votes(bot: BobuxEconomyBot):
-    with closing(bot.db_connection.cursor()) as db_cursor:
+    async with bot.db_connection.cursor() as db_cursor:
         # c.execute("""
         #     SELECT DISTINCT message_id, channel_id FROM votes;
         # """)
@@ -157,13 +164,16 @@ async def sync_votes(bot: BobuxEconomyBot):
         #     message = await channel.fetch_message(message_id)
         #     await _sync_message(message)
 
-        db_cursor.execute("""
+        await db_cursor.execute("""
             SELECT memes_channel, last_memes_message FROM guilds
                 WHERE memes_channel IS NOT NULL AND last_memes_message IS NOT NULL;
         """)
-        result: List[Tuple[int, int]] = db_cursor.fetchall()
+        result = await db_cursor.fetchall()
 
-    for channel_id, last_memes_message in result:
+    for row in result:
+        channel_id: int = row["memes_channel"]
+        last_memes_message: int = row["last_memes_message"]
+
         channel = bot.get_channel(channel_id)
         if isinstance(channel, disnake.abc.Messageable):
             async for message in channel.history(after=disnake.Object(last_memes_message)):
@@ -184,7 +194,7 @@ async def on_vote_raw(bot: BobuxEconomyBot, message_id: int, channel_id: int, me
         return
     await on_vote(bot.db_connection, partial_message, member, old, new)
 
-async def on_vote(db_connection: sqlite3.Connection, partial_message: disnake.PartialMessage, member: disnake.Member, old: Optional[Vote], new: Optional[Vote]):
+async def on_vote(db_connection: aiosqlite.Connection, partial_message: disnake.PartialMessage, member: disnake.Member, old: Optional[Vote], new: Optional[Vote]):
     if old != new:
         logging.info(f"{member.id} on {partial_message.id}: {old} -> {new}")
 
@@ -204,23 +214,23 @@ async def on_vote(db_connection: sqlite3.Connection, partial_message: disnake.Pa
             return
 
         if negative and not vote_removed:
-            balance.subtract(db_connection, poster, *poster_reward, allow_overdraft=True)
-            balance.add(db_connection, member, *voter_reward)
+            await balance.subtract(db_connection, poster, *poster_reward, allow_overdraft=True)
+            await balance.add(db_connection, member, *voter_reward)
             logging.info(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / {voter_reward} bobux")
         elif not negative and not vote_removed:
-            balance.add(db_connection, poster, *poster_reward)
-            balance.add(db_connection, member, *voter_reward)
+            await balance.add(db_connection, poster, *poster_reward)
+            await balance.add(db_connection, member, *voter_reward)
             logging.info(f"{member.id} on {partial_message.id}: {poster_reward} bobux / {voter_reward} bobux")
         elif negative and vote_removed:
-            balance.subtract(db_connection, poster, *poster_reward)
-            balance.subtract(db_connection, member, *voter_reward)
+            await balance.subtract(db_connection, poster, *poster_reward)
+            await balance.subtract(db_connection, member, *voter_reward)
             logging.info(f"{member.id} on {partial_message.id}: -{poster_reward} bobux / -{voter_reward} bobux")
         elif not negative and vote_removed:
-            balance.add(db_connection, poster, *poster_reward)
-            balance.subtract(db_connection, member, *voter_reward)
+            await balance.add(db_connection, poster, *poster_reward)
+            await balance.subtract(db_connection, member, *voter_reward)
             logging.info(f"{member.id} on {partial_message.id}: {poster_reward} bobux / -{voter_reward} bobux")
 
-async def get_original_author(db_connection: sqlite3.Connection, message: disnake.Message, guild: disnake.Guild) -> Optional[disnake.Member]:
+async def get_original_author(db_connection: aiosqlite.Connection, message: disnake.Message, guild: disnake.Guild) -> Optional[disnake.Member]:
     if isinstance(message.author, disnake.Member):
         return message.author
 
@@ -230,13 +240,14 @@ async def get_original_author(db_connection: sqlite3.Connection, message: disnak
     except disnake.NotFound:
         # Could be a webhook, check for puppeting
         if message.webhook_id is not None:
-            with closing(db_connection.cursor()) as db_cursor:
-                db_cursor.execute("""
+            async with db_connection.cursor() as db_cursor:
+                await db_cursor.execute("""
                     SELECT member_id FROM webhooks WHERE webhook_id = ?;
                 """, (message.webhook_id, ))
-                member_id: Optional[int] = (db_cursor.fetchone() or (None, ))[0]
+                row = await db_cursor.fetchone()
 
-            if member_id is not None:
+            if row is not None:
+                member_id: int = row["member_id"]
                 try:
                     return guild.get_member(member_id) \
                            or await guild.fetch_member(member_id)

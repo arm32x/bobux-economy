@@ -1,7 +1,5 @@
-from contextlib import closing
 from datetime import datetime
-import sqlite3
-from typing import List, Union, cast
+from typing import Union, cast
 import disnake
 from disnake.ext import commands
 
@@ -132,12 +130,12 @@ class RealEstate(commands.Cog):
     async def _check_user_and_respond(
         self, inter: disnake.Interaction, user: disnake.Member
     ):
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 "SELECT id, purchase_time FROM purchased_channels WHERE owner_id = ?",
                 (user.id,),
             )
-            rows: List[sqlite3.Row] = db_cursor.fetchall()
+            rows = await db_cursor.fetchall()
 
             # TODO: Improve this output with Discord's timestamp formatting.
             message_parts = [f"{user.mention}:"]
@@ -158,15 +156,15 @@ class RealEstate(commands.Cog):
     ):
         """Check the real estate holdings of everyone in this server"""
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                     SELECT id, owner_id, purchase_time FROM purchased_channels
                         WHERE guild_id = ? ORDER BY owner_id
                 """,
                 (inter.guild.id,),
             )
-            rows: List[sqlite3.Row] = db_cursor.fetchall()
+            rows = await db_cursor.fetchall()
 
             message_parts = []
             current_owner_id = None

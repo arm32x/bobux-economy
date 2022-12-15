@@ -12,6 +12,7 @@ include = ["data/changelog.txt"]
 disnake = "^2.6.0"
 python = "^3.9"
 yoyo-migrations = "^7.3.2"
+aiosqlite = "^0.17.0"
 
 [build-system]
 requires = ["poetry-core"]

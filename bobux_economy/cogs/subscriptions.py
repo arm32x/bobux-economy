@@ -1,9 +1,7 @@
 import asyncio
-from contextlib import closing
 from datetime import datetime, timezone
 import logging
-import sqlite3
-from typing import Dict, List, Optional
+from typing import Dict
 
 import disnake
 from disnake.ext import commands
@@ -64,8 +62,8 @@ class Subscriptions(commands.Cog):
 
         price, spare_change = balance.from_float(price_per_week)
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                 INSERT INTO
                     available_subscriptions (role_id, guild_id, price, spare_change)
@@ -74,7 +72,7 @@ class Subscriptions(commands.Cog):
                 """,
                 (role.id, inter.guild.id, price, spare_change),
             )
-            self.bot.db_connection.commit()
+            await self.bot.db_connection.commit()
 
         price_str = balance.to_string(price, spare_change)
         await inter.response.send_message(
@@ -96,8 +94,8 @@ class Subscriptions(commands.Cog):
         role: The role of the subscription to delete
         """
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                 DELETE FROM available_subscriptions
                 WHERE
@@ -106,10 +104,10 @@ class Subscriptions(commands.Cog):
                 (role.id,),
             )
             if db_cursor.rowcount == 0:
-                self.bot.db_connection.rollback()
+                await self.bot.db_connection.rollback()
                 raise SubscriptionNotFound(role)
 
-            db_cursor.execute(
+            await db_cursor.execute(
                 """
                 DELETE FROM member_subscriptions
                 WHERE
@@ -117,7 +115,7 @@ class Subscriptions(commands.Cog):
                 """,
                 (role.id,),
             )
-            self.bot.db_connection.commit()
+            await self.bot.db_connection.commit()
 
         await inter.response.send_message(
             f"Deleted subscription for role {role.mention}.",
@@ -128,8 +126,8 @@ class Subscriptions(commands.Cog):
     async def slash_subscriptions_list(self, inter: disnake.GuildCommandInteraction):
         """List available subscriptions"""
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                 SELECT
                     role_id,
@@ -142,9 +140,9 @@ class Subscriptions(commands.Cog):
                 """,
                 (inter.guild.id,),
             )
-            available_subscriptions_rows: List[sqlite3.Row] = db_cursor.fetchall()
+            available_subscriptions_rows = await db_cursor.fetchall()
 
-            db_cursor.execute(
+            await db_cursor.execute(
                 """
                 SELECT
                     role_id,
@@ -156,7 +154,7 @@ class Subscriptions(commands.Cog):
                 """,
                 (inter.author.id,),
             )
-            member_subscriptions_rows: List[sqlite3.Row] = db_cursor.fetchall()
+            member_subscriptions_rows = await db_cursor.fetchall()
             member_subscriptions_dict: Dict[int, datetime] = {
                 row["role_id"]: row["subscribed_since"]
                 for row in member_subscriptions_rows
@@ -200,8 +198,8 @@ class Subscriptions(commands.Cog):
         role: The role of the subscription to subscribe to
         """
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                 SELECT
                     price,
@@ -213,13 +211,13 @@ class Subscriptions(commands.Cog):
                 """,
                 (role.id,),
             )
-            row: Optional[sqlite3.Row] = db_cursor.fetchone()
+            row = await db_cursor.fetchone()
             if row is None:
                 raise SubscriptionNotFound(role)
             price: int = row["price"]
             spare_change: bool = row["spare_change"]
 
-            db_cursor.execute(
+            await db_cursor.execute(
                 """
                 SELECT
                     COUNT(*)
@@ -233,7 +231,9 @@ class Subscriptions(commands.Cog):
             )
             # Exactly one row will always be returned since we are using
             # an aggregate function.
-            already_subscribed = bool(db_cursor.fetchone()[0])
+            row = await db_cursor.fetchone()
+            assert row is not None
+            already_subscribed = bool(row[0])
 
         if already_subscribed:
             raise AlreadySubscribed(role)
@@ -270,7 +270,7 @@ class Subscriptions(commands.Cog):
         # error here.
         user_has_been_charged = False
         try:
-            balance.subtract(self.bot.db_connection, inter.author, price, spare_change)
+            await balance.subtract(self.bot.db_connection, inter.author, price, spare_change)
             user_has_been_charged = True
             await subscriptions.subscribe(self.bot.db_connection, inter.author, role)
             await button_inter.response.edit_message(
@@ -292,7 +292,7 @@ class Subscriptions(commands.Cog):
             # Since there was an error, we need to refund the user if
             # they have already been charged.
             if user_has_been_charged:
-                balance.add(self.bot.db_connection, inter.author, price, spare_change)
+                await balance.add(self.bot.db_connection, inter.author, price, spare_change)
 
     @commands.slash_command(name="unsubscribe")
     @commands.bot_has_guild_permissions(manage_roles=True)
@@ -307,8 +307,8 @@ class Subscriptions(commands.Cog):
         role: The role of the subscription to unsubscribe from
         """
 
-        with closing(self.bot.db_connection.cursor()) as db_cursor:
-            db_cursor.execute(
+        async with self.bot.db_connection.cursor() as db_cursor:
+            await db_cursor.execute(
                 """
                 SELECT
                     COUNT(*)
@@ -322,7 +322,9 @@ class Subscriptions(commands.Cog):
             )
             # Exactly one row will always be returned since we are using
             # an aggregate function.
-            already_subscribed = bool(db_cursor.fetchone()[0])
+            row = await db_cursor.fetchone()
+            assert row is not None
+            already_subscribed = bool(row[0])
 
         if not already_subscribed:
             raise NotSubscribed(role)

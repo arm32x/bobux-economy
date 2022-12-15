@@ -2,6 +2,7 @@ from contextlib import closing
 import sqlite3
 from typing import Callable, Optional, TypeVar
 
+import aiosqlite
 import disnake
 from disnake.ext import commands
 from disnake.ui import ActionRow, MessageUIComponent
@@ -46,13 +47,13 @@ class MissingAdminRole(commands.CheckFailure):
         super().__init__(message, *args)
 
 
-def get_admin_role_id(
-    db_connection: sqlite3.Connection, guild_id: int
+async def get_admin_role_id(
+    db_connection: aiosqlite.Connection, guild_id: int
 ) -> Optional[int]:
-    with closing(db_connection.cursor()) as db_cursor:
-        db_cursor.execute("SELECT admin_role FROM guilds WHERE id = ?", (guild_id,))
+    async with db_connection.cursor() as db_cursor:
+        await db_cursor.execute("SELECT admin_role FROM guilds WHERE id = ?", (guild_id,))
 
-        row: Optional[sqlite3.Row] = db_cursor.fetchone()
+        row = await db_cursor.fetchone()
         if row is None:
             return None
 
@@ -64,14 +65,14 @@ def get_admin_role_id(
 
 
 def has_admin_role() -> Callable[[T], T]:
-    def predicate(ctx: commands.context.AnyContext) -> bool:
+    async def predicate(ctx: commands.context.AnyContext) -> bool:
         # These checks are here to aid type checking.
         if ctx.guild is None or not isinstance(ctx.author, disnake.Member):
             raise commands.errors.NoPrivateMessage()
         if not isinstance(ctx.bot, BobuxEconomyBot):
             raise TypeError(f"Bot type must be BobuxEconomyBot, not '{type(ctx.bot).__name__}'")
 
-        admin_role_id = get_admin_role_id(ctx.bot.db_connection, ctx.guild.id)
+        admin_role_id = await get_admin_role_id(ctx.bot.db_connection, ctx.guild.id)
         if admin_role_id is not None:
             if not any(r.id == admin_role_id for r in ctx.author.roles):
                 raise MissingAdminRole(admin_role_id)
