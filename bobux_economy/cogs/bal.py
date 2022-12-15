@@ -27,7 +27,7 @@ class Bal(commands.Cog):
     async def slash_bal_check_self(self, inter: disnake.GuildCommandInteraction):
         """Check your balance in this server"""
 
-        await Bal._check_user_and_respond(inter, inter.author)
+        await self.check_user_and_respond(inter, inter.author)
 
     @slash_bal_check.sub_command(name="user")
     async def slash_bal_check_user(
@@ -41,19 +41,19 @@ class Bal(commands.Cog):
         target: The user to check the balance of
         """
 
-        await Bal._check_user_and_respond(inter, target)
+        await self.check_user_and_respond(inter, target)
 
     @commands.user_command(name="Check Balance", dm_permission=False)
     @commands.guild_only()
     async def user_check_balance(self, inter: disnake.UserCommandInteraction):
-        await Bal._check_user_and_respond(inter, cast(disnake.Member, inter.target))
+        await self.check_user_and_respond(inter, cast(disnake.Member, inter.target))
 
-    @staticmethod
-    async def _check_user_and_respond(
+    async def check_user_and_respond(
+        self,
         inter: disnake.Interaction,
         user: disnake.Member,
     ):
-        amount, spare_change = balance.get(user)
+        amount, spare_change = balance.get(self.bot.db_connection, user)
         balance_str = balance.to_string(amount, spare_change)
 
         await inter.response.send_message(
@@ -109,7 +109,7 @@ class Bal(commands.Cog):
         """
 
         amount, spare_change = balance.from_float(amount)
-        balance.set(target, amount, spare_change)
+        balance.set(self.bot.db_connection, target, amount, spare_change)
 
     @slash_bal.sub_command(name="add")
     @utils.has_admin_role()
@@ -129,7 +129,7 @@ class Bal(commands.Cog):
         """
 
         amount, spare_change = balance.from_float(float(amount))
-        balance.add(target, amount, spare_change)
+        balance.add(self.bot.db_connection, target, amount, spare_change)
 
         bobux_str = balance.to_string(amount, spare_change)
         await inter.response.send_message(
@@ -157,7 +157,7 @@ class Bal(commands.Cog):
         """
 
         amount, spare_change = balance.from_float(float(amount))
-        balance.subtract(target, amount, spare_change, allow_overdraft=True)
+        balance.subtract(self.bot.db_connection, target, amount, spare_change, allow_overdraft=True)
 
         bobux_str = balance.to_string(amount, spare_change)
         await inter.response.send_message(
@@ -186,8 +186,8 @@ class Bal(commands.Cog):
         # TODO: Figure out a nicer way to handle transactions.
         try:
             amount, spare_change = balance.from_float(amount)
-            balance.subtract(inter.author, amount, spare_change)
-            balance.add(recipient, amount, spare_change)
+            balance.subtract(self.bot.db_connection, inter.author, amount, spare_change)
+            balance.add(self.bot.db_connection, recipient, amount, spare_change)
         except sqlite3.Error:
             self.bot.db_connection.rollback()
             raise

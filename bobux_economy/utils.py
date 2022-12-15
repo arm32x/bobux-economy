@@ -82,3 +82,10 @@ def has_admin_role() -> Callable[[T], T]:
         return True
 
     return commands.check(predicate)
+
+
+class UserFacingError(RuntimeError):
+    """An Exception type for user errors in commands, such as invalid input"""
+
+    def __init__(self, message: str):
+        super().__init__(message)

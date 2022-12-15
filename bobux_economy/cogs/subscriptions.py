@@ -2,7 +2,6 @@ import asyncio
 from contextlib import closing
 from datetime import datetime, timezone
 import logging
-import random
 import sqlite3
 from typing import Dict, List, Optional
 
@@ -12,7 +11,6 @@ from disnake.ext import commands
 from bobux_economy import balance, subscriptions, utils
 from bobux_economy.bot import BobuxEconomyBot
 from bobux_economy.cogs.error_handling import ErrorHandling
-from bobux_economy.globals import UserFacingError
 
 
 class SubscriptionNotFound(commands.errors.CommandError):
@@ -41,7 +39,7 @@ class Subscriptions(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         logging.info("Starting subscriptions background task...")
-        asyncio.create_task(subscriptions.run())
+        asyncio.create_task(subscriptions.run(self.bot))
 
     @commands.slash_command(name="subscriptions")
     async def slash_subscriptions(self, _: disnake.GuildCommandInteraction):
@@ -272,9 +270,9 @@ class Subscriptions(commands.Cog):
         # error here.
         user_has_been_charged = False
         try:
-            balance.subtract(inter.author, price, spare_change)
+            balance.subtract(self.bot.db_connection, inter.author, price, spare_change)
             user_has_been_charged = True
-            await subscriptions.subscribe(inter.author, role)
+            await subscriptions.subscribe(self.bot.db_connection, inter.author, role)
             await button_inter.response.edit_message(
                 f"Subscribed to {role.mention}.", components=[]
             )
@@ -294,7 +292,7 @@ class Subscriptions(commands.Cog):
             # Since there was an error, we need to refund the user if
             # they have already been charged.
             if user_has_been_charged:
-                balance.add(inter.author, price, spare_change)
+                balance.add(self.bot.db_connection, inter.author, price, spare_change)
 
     @commands.slash_command(name="unsubscribe")
     @commands.bot_has_guild_permissions(manage_roles=True)
@@ -357,7 +355,7 @@ class Subscriptions(commands.Cog):
         # the global error handlers will not work. We have to handle the
         # error here.
         try:
-            await subscriptions.unsubscribe(inter.author, role)
+            await subscriptions.unsubscribe(self.bot.db_connection, inter.author, role)
             await button_inter.response.edit_message(
                 f"Unsubscribed from {role.mention}.", components=[]
             )

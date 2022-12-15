@@ -1,11 +1,11 @@
+import sqlite3
 from contextlib import closing
 import math
 from typing import Tuple
 
-import disnake as discord
+import disnake
 
-from bobux_economy.database import connection as db
-from bobux_economy.globals import UserFacingError
+from bobux_economy.utils import UserFacingError
 
 
 class InsufficientFundsError(UserFacingError):
@@ -17,41 +17,41 @@ class NegativeAmountError(UserFacingError):
         super().__init__("Amount must not be negative")
 
 
-def get(member: discord.Member) -> Tuple[int, bool]:
+def get(db_connection: sqlite3.Connection, member: disnake.Member) -> Tuple[int, bool]:
     # TODO: Don't hardcode the database connection.
-    with closing(db.cursor()) as c:
-        c.execute("""
+    with closing(db_connection.cursor()) as db_cursor:
+        db_cursor.execute("""
             SELECT balance, spare_change FROM members WHERE id = ? AND guild_id = ?;
         """, (member.id, member.guild.id))
-        return c.fetchone() or (0, False)
+        return db_cursor.fetchone() or (0, False)
 
-def set(member: discord.Member, amount: int, spare_change: bool):
+def set(db_connection: sqlite3.Connection, member: disnake.Member, amount: int, spare_change: bool):
     # TODO: Don't hardcode the database connection.
-    with closing(db.cursor()) as c:
-        c.execute("""
+    with closing(db_connection.cursor()) as db_cursor:
+        db_cursor.execute("""
             INSERT INTO members(id, guild_id, balance, spare_change) VALUES(?, ?, ?, ?)
                 ON CONFLICT(id, guild_id) DO UPDATE SET balance = excluded.balance, spare_change = excluded.spare_change;
         """, (member.id, member.guild.id, amount, spare_change))
-        db.commit()
+        db_connection.commit()
 
-def add(member: discord.Member, amount: int, spare_change: bool):
+def add(db_connection: sqlite3.Connection, member: disnake.Member, amount: int, spare_change: bool):
     if amount < 0:
         raise NegativeAmountError()
 
-    balance, balance_spare_change = get(member)
+    balance, balance_spare_change = get(db_connection, member)
 
     balance += amount
     if spare_change and balance_spare_change:
         balance += 1
     balance_spare_change ^= spare_change
 
-    set(member, balance, balance_spare_change)
+    set(db_connection, member, balance, balance_spare_change)
 
-def subtract(member: discord.Member, amount: int, spare_change: bool, allow_overdraft=False):
+def subtract(db_connection: sqlite3.Connection, member: disnake.Member, amount: int, spare_change: bool, allow_overdraft=False):
     if amount < 0:
         raise NegativeAmountError()
 
-    balance, balance_spare_change = get(member)
+    balance, balance_spare_change = get(db_connection, member)
 
     if not allow_overdraft and balance < amount or balance == amount and spare_change and not balance_spare_change:
         raise InsufficientFundsError()
@@ -61,7 +61,7 @@ def subtract(member: discord.Member, amount: int, spare_change: bool, allow_over
         balance -= 1
     balance_spare_change ^= spare_change
 
-    set(member, balance, balance_spare_change)
+    set(db_connection, member, balance, balance_spare_change)
 
 
 def from_float(amount: float) -> Tuple[int, bool]:

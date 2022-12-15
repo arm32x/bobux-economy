@@ -47,7 +47,7 @@ class RealEstate(commands.Cog):
         name: The name of the purchased channel
         """
 
-        channel = await real_estate.buy(disnake.ChannelType.text, inter.author, name)
+        channel = await real_estate.buy(self.bot.db_connection, disnake.ChannelType.text, inter.author, name)
         await inter.response.send_message(
             f"Bought {channel.mention} for {TEXT_CHANNEL_PRICE_STR}",
             allowed_mentions=disnake.AllowedMentions.none(),
@@ -70,7 +70,7 @@ class RealEstate(commands.Cog):
         name: The name of the purchased channel
         """
 
-        channel = await real_estate.buy(disnake.ChannelType.voice, inter.author, name)
+        channel = await real_estate.buy(self.bot.db_connection, disnake.ChannelType.voice, inter.author, name)
         await inter.response.send_message(
             f"Bought {channel.mention} for {VOICE_CHANNEL_PRICE_STR}",
             allowed_mentions=disnake.AllowedMentions.none(),
@@ -90,7 +90,7 @@ class RealEstate(commands.Cog):
         channel: The channel to sell
         """
 
-        price = await real_estate.sell(channel, inter.author)
+        price = await real_estate.sell(self.bot.db_connection, channel, inter.author)
         await inter.response.send_message(
             f"Sold ‘{channel.name}’ for {balance.to_string(*price)}",
             allowed_mentions=disnake.AllowedMentions.none(),

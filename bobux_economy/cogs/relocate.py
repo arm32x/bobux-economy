@@ -6,7 +6,7 @@ import disnake
 from disnake.ext import commands
 
 from bobux_economy.bot import BobuxEconomyBot
-from bobux_economy.globals import UserFacingError
+from bobux_economy.utils import UserFacingError
 
 
 class MessageAlreadyInChannel(UserFacingError):
