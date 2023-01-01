@@ -1,7 +1,7 @@
-import sqlite3
 from typing import Optional, Sequence
 
 import aiosqlite
+import disnake
 from disnake.ext import commands
 
 
@@ -14,5 +14,18 @@ class BobuxEconomyBot(commands.InteractionBot):
         *,
         test_guilds: Optional[Sequence[int]] = None
     ):
-        super().__init__(sync_commands=True, test_guilds=test_guilds)
+        super().__init__(
+            intents=disnake.Intents(
+                # General cache usage throughout the bot.
+                guilds=True,
+                # Detect new messages in vote channels.
+                guild_messages=True,
+                # Detect new votes on messages in vote channels.
+                guild_reactions=True,
+                # Detect speech bubbles in vote channels.
+                message_content=True,
+            ),
+            sync_commands=True,
+            test_guilds=test_guilds,
+        )
         self.db_connection = db_connection
