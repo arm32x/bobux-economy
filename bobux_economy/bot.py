@@ -1,16 +1,19 @@
 from typing import Optional, Sequence
 
 import aiosqlite
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import disnake
 from disnake.ext import commands
 
 
 class BobuxEconomyBot(commands.InteractionBot):
     db_connection: aiosqlite.Connection
+    scheduler: AsyncIOScheduler
 
     def __init__(
         self,
         db_connection: aiosqlite.Connection,
+        scheduler: AsyncIOScheduler,
         *,
         test_guilds: Optional[Sequence[int]] = None
     ):
@@ -29,3 +32,4 @@ class BobuxEconomyBot(commands.InteractionBot):
             test_guilds=test_guilds,
         )
         self.db_connection = db_connection
+        self.scheduler = scheduler

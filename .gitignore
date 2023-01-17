@@ -1,5 +1,6 @@
 token.txt
 bobux.db*
+scheduler.db*
 
 .idea/
 *.iml
