@@ -1,6 +1,6 @@
-from contextlib import closing
+from contextlib import asynccontextmanager, closing
 import sqlite3
-from typing import Callable, Optional, TypeVar
+from typing import AsyncIterator, Callable, Optional, TypeVar
 
 import aiosqlite
 import disnake
@@ -51,7 +51,9 @@ async def get_admin_role_id(
     db_connection: aiosqlite.Connection, guild_id: int
 ) -> Optional[int]:
     async with db_connection.cursor() as db_cursor:
-        await db_cursor.execute("SELECT admin_role FROM guilds WHERE id = ?", (guild_id,))
+        await db_cursor.execute(
+            "SELECT admin_role FROM guilds WHERE id = ?", (guild_id,)
+        )
 
         row = await db_cursor.fetchone()
         if row is None:
@@ -70,7 +72,9 @@ def has_admin_role() -> Callable[[T], T]:
         if ctx.guild is None or not isinstance(ctx.author, disnake.Member):
             raise commands.errors.NoPrivateMessage()
         if not isinstance(ctx.bot, BobuxEconomyBot):
-            raise TypeError(f"Bot type must be BobuxEconomyBot, not '{type(ctx.bot).__name__}'")
+            raise TypeError(
+                f"Bot type must be BobuxEconomyBot, not '{type(ctx.bot).__name__}'"
+            )
 
         admin_role_id = await get_admin_role_id(ctx.bot.db_connection, ctx.guild.id)
         if admin_role_id is not None:
@@ -90,3 +94,41 @@ class UserFacingError(RuntimeError):
 
     def __init__(self, message: str):
         super().__init__(message)
+
+
+_transaction_level: int = 0
+
+
+@asynccontextmanager
+async def db_transaction(
+    db_connection: aiosqlite.Connection,
+) -> AsyncIterator[aiosqlite.Cursor]:
+    # Keep track of the number of nested transactions.
+    global _transaction_level
+    _transaction_level += 1
+
+    try:
+        if _transaction_level > 1:
+            # Use savepoints for nested transactions.
+            await db_connection.execute(
+                f"SAVEPOINT nested_transaction_{_transaction_level}"
+            )
+            async with db_connection.cursor() as db_cursor:
+                yield db_cursor
+        else:
+            # Use regular transactions when no nesting is involved.
+            await db_connection.execute("BEGIN")
+            async with db_connection.cursor() as db_cursor:
+                yield db_cursor
+                await db_connection.commit()
+    except:
+        if _transaction_level > 1:
+            await db_connection.execute(
+                f"ROLLBACK TO SAVEPOINT nested_transaction_{_transaction_level}"
+            )
+        else:
+            await db_connection.rollback()
+
+        raise
+    finally:
+        _transaction_level -= 1
