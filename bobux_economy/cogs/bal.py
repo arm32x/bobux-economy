@@ -110,6 +110,14 @@ class Bal(commands.Cog):
         amount, spare_change = balance.from_float(amount)
         await balance.set(self.bot.db_connection, target, amount, spare_change)
 
+        bobux_str = balance.to_string(amount, spare_change)
+        await inter.response.send_message(
+            f"Set {target.mention}’s balance to {bobux_str}",
+            allowed_mentions=disnake.AllowedMentions(
+                users=[target], roles=False, everyone=False, replied_user=False
+            ),
+        )
+
     @slash_bal.sub_command(name="add")
     @utils.has_admin_role()
     async def slash_bal_add(
@@ -156,7 +164,9 @@ class Bal(commands.Cog):
         """
 
         amount, spare_change = balance.from_float(float(amount))
-        await balance.subtract(self.bot.db_connection, target, amount, spare_change, allow_overdraft=True)
+        await balance.subtract(
+            self.bot.db_connection, target, amount, spare_change, allow_overdraft=True
+        )
 
         bobux_str = balance.to_string(amount, spare_change)
         await inter.response.send_message(
@@ -185,7 +195,9 @@ class Bal(commands.Cog):
         # TODO: Figure out a nicer way to handle transactions.
         try:
             amount, spare_change = balance.from_float(amount)
-            await balance.subtract(self.bot.db_connection, inter.author, amount, spare_change)
+            await balance.subtract(
+                self.bot.db_connection, inter.author, amount, spare_change
+            )
             await balance.add(self.bot.db_connection, recipient, amount, spare_change)
         except aiosqlite.Error:
             await self.bot.db_connection.rollback()
