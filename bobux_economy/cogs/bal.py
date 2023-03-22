@@ -1,11 +1,12 @@
 from typing import cast
 
-import aiosqlite
 import disnake
 from disnake.ext import commands
 
 from bobux_economy import balance, utils
+from bobux_economy.bobux import Account, Bobux
 from bobux_economy.bot import BobuxEconomyBot
+from bobux_economy.transactions import create_transaction
 
 
 class Bal(commands.Cog):
@@ -52,11 +53,11 @@ class Bal(commands.Cog):
         inter: disnake.Interaction,
         user: disnake.Member,
     ):
-        amount, spare_change = await balance.get(self.bot.db_connection, user)
-        balance_str = balance.to_string(amount, spare_change)
+        account = Account.from_member(user)
+        balance = await account.get_balance(self.bot.db_connection)
 
         await inter.response.send_message(
-            f"{user.mention}: {balance_str}",
+            f"{user.mention}: {balance}",
             allowed_mentions=disnake.AllowedMentions.none(),
             ephemeral=True,
         )
@@ -65,6 +66,7 @@ class Bal(commands.Cog):
     async def slash_bal_check_everyone(self, inter: disnake.GuildCommandInteraction):
         """Check the balance of everyone in this server"""
 
+        # TODO: Move this to a function in the new transactions API.
         async with self.bot.db_connection.cursor() as db_cursor:
             await db_cursor.execute(
                 """
@@ -135,12 +137,15 @@ class Bal(commands.Cog):
         amount: The amount to add to the target’s balance
         """
 
-        amount, spare_change = balance.from_float(float(amount))
-        await balance.add(self.bot.db_connection, target, amount, spare_change)
+        account = Account.from_member(target)
+        transaction_amount = Bobux.from_float(amount)
 
-        bobux_str = balance.to_string(amount, spare_change)
+        await create_transaction(
+            self.bot.db_connection, None, account, transaction_amount
+        )
+
         await inter.response.send_message(
-            f"Added {bobux_str} to {target.mention}’s balance",
+            f"Added {transaction_amount} to {target.mention}’s balance",
             allowed_mentions=disnake.AllowedMentions(
                 users=[target], roles=False, everyone=False, replied_user=False
             ),
@@ -163,14 +168,15 @@ class Bal(commands.Cog):
         amount: The amount to subtract from the target’s balance
         """
 
-        amount, spare_change = balance.from_float(float(amount))
-        await balance.subtract(
-            self.bot.db_connection, target, amount, spare_change, allow_overdraft=True
+        account = Account.from_member(target)
+        transaction_amount = Bobux.from_float(amount)
+
+        await create_transaction(
+            self.bot.db_connection, account, None, transaction_amount
         )
 
-        bobux_str = balance.to_string(amount, spare_change)
         await inter.response.send_message(
-            f"Subtracted {bobux_str} from {target.mention}’s balance",
+            f"Subtracted {transaction_amount} from {target.mention}’s balance",
             allowed_mentions=disnake.AllowedMentions(
                 users=[target], roles=False, everyone=False, replied_user=False
             ),
@@ -192,21 +198,16 @@ class Bal(commands.Cog):
         amount: The amount to transfer to the recipient
         """
 
-        # TODO: Figure out a nicer way to handle transactions.
-        try:
-            amount, spare_change = balance.from_float(amount)
-            await balance.subtract(
-                self.bot.db_connection, inter.author, amount, spare_change
-            )
-            await balance.add(self.bot.db_connection, recipient, amount, spare_change)
-        except aiosqlite.Error:
-            await self.bot.db_connection.rollback()
-            raise
-        await self.bot.db_connection.commit()
+        source = Account.from_member(inter.author)
+        destination = Account.from_member(recipient)
+        transaction_amount = Bobux.from_float(amount)
 
-        bobux_str = balance.to_string(amount, spare_change)
+        await create_transaction(
+            self.bot.db_connection, source, destination, transaction_amount
+        )
+
         await inter.response.send_message(
-            f"Transferred {bobux_str} to {recipient.mention}",
+            f"Transferred {transaction_amount} to {recipient.mention}",
             allowed_mentions=disnake.AllowedMentions(
                 users=[recipient], roles=False, everyone=False, replied_user=False
             ),
