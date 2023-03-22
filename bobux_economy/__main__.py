@@ -3,6 +3,7 @@ from contextlib import suppress
 import logging
 import sqlite3
 import sys
+from typing import List
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -33,15 +34,24 @@ async def main():
 
         # Initialize the scheduler.
         scheduler = AsyncIOScheduler()
-        scheduler.add_jobstore(SQLAlchemyJobStore(url="sqlite+pysqlite:///data/scheduler.db"))
+        scheduler.add_jobstore(
+            SQLAlchemyJobStore(url="sqlite+pysqlite:///data/scheduler.db")
+        )
 
         async def start_scheduler():
             scheduler.start()
 
-        # TODO: Load list of test guilds from a file.
-        bot = BobuxEconomyBot(
-            db_connection, scheduler, test_guilds=[766073081449545798]
-        )
+        # Load list of test guilds from a file.
+        test_guilds: List[int]
+        try:
+            with open("data/test_guilds.txt", "r") as test_guilds_file:
+                test_guilds = [int(line) for line in test_guilds_file.readlines()]
+        except FileNotFoundError:
+            test_guilds = []
+
+        logging.info(f"Test guilds: {test_guilds}")
+
+        bot = BobuxEconomyBot(db_connection, scheduler, test_guilds=test_guilds)
         bot.add_listener(start_scheduler, "on_ready")
 
         bot.load_extension("bobux_economy.cogs.bal")
