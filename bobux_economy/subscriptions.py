@@ -8,6 +8,7 @@ import disnake
 
 from bobux_economy import balance
 from bobux_economy.bot import BobuxEconomyBot
+from bobux_economy.transactions import InsufficientFunds
 
 # Charge subscriptions every minute for testing purposes
 DEBUG_TIMING = False
@@ -51,7 +52,7 @@ async def run(bot: BobuxEconomyBot):
 
             try:
                 await balance.subtract(bot.db_connection, member, price, spare_change)
-            except balance.InsufficientFundsError:
+            except InsufficientFunds:
                 role = guild.get_role(role_id)
                 if role is not None:
                     with suppress(disnake.Forbidden):
