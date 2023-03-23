@@ -1,10 +1,13 @@
+import logging
 from typing import Optional
 
 import aiosqlite
-import disnake
 from bobux_economy import utils
 
 from bobux_economy.bobux import Account, Bobux
+
+
+logger = logging.getLogger(__name__)
 
 
 class InsufficientFunds(utils.UserFacingError):
@@ -97,3 +100,5 @@ async def create_transaction(
             destination_balance = await destination.get_balance(db_connection)
             destination_balance += amount
             await _set_balance_raw(db_connection, destination, destination_balance)
+
+    logger.info(f"Transaction: {amount} from {source} to {destination}")
