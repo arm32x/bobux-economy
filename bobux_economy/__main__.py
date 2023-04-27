@@ -7,7 +7,6 @@ from typing import List
 
 import aiosqlite
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 import yoyo
 
 from bobux_economy.bot import BobuxEconomyBot
@@ -34,9 +33,6 @@ async def main():
 
         # Initialize the scheduler.
         scheduler = AsyncIOScheduler()
-        scheduler.add_jobstore(
-            SQLAlchemyJobStore(url="sqlite+pysqlite:///data/scheduler.db")
-        )
 
         async def start_scheduler():
             scheduler.start()
