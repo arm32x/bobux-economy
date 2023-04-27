@@ -109,12 +109,23 @@ class Bal(commands.Cog):
         amount: The new balance of the target
         """
 
-        amount, spare_change = balance.from_float(amount)
-        await balance.set(self.bot.db_connection, target, amount, spare_change)
+        async with utils.db_transaction(self.bot.db_connection):
+            account = Account.from_member(target)
 
-        bobux_str = balance.to_string(amount, spare_change)
+            old_balance = await account.get_balance(self.bot.db_connection)
+            new_balance = Bobux.from_float(amount)
+            transaction_amount = new_balance - old_balance
+
+            if transaction_amount < Bobux.ZERO:
+                transaction_amount = -transaction_amount
+                source, destination = account, None
+            else:
+                source, destination = None, account
+
+            await create_transaction(self.bot.db_connection, source, destination, transaction_amount)
+
         await inter.response.send_message(
-            f"Set {target.mention}’s balance to {bobux_str}",
+            f"Set {target.mention}’s balance to {new_balance}",
             allowed_mentions=disnake.AllowedMentions(
                 users=[target], roles=False, everyone=False, replied_user=False
             ),
