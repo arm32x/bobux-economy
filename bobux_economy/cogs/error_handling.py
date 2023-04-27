@@ -20,10 +20,10 @@ class ErrorHandling(commands.Cog):
             return f"**Error:** {ex}"
         else:
             error_id = random.randint(0, 65535)
-            logging.error(f"Internal error {error_id}: {ex}", exc_info=ex)
+            logging.error(f"Internal error D-{error_id}: {ex}", exc_info=ex)
             return (
                 f"**Error:** An internal error has occurred. "
-                f"If reporting this error, please provide the error ID {error_id}."
+                f"If reporting this error, please provide the error ID `D-{error_id}`."
             )
 
     @classmethod
