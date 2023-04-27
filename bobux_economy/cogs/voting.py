@@ -3,7 +3,7 @@ import logging
 import disnake
 from disnake.ext import commands
 
-from bobux_economy import upvotes
+from bobux_economy import utils, upvotes
 from bobux_economy.bot import BobuxEconomyBot
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class Voting(commands.Cog):
 
         if await upvotes.message_eligible(self.bot.db_connection, message):
             await upvotes.add_reactions(message)
-            async with self.bot.db_connection.cursor() as db_cursor:
+            async with utils.db_transaction(self.bot.db_connection) as db_cursor:
                 await db_cursor.execute(
                     """
                     INSERT INTO
@@ -40,7 +40,6 @@ class Voting(commands.Cog):
                     """,
                     (message.guild.id, message.id),
                 )
-                await self.bot.db_connection.commit()
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: disnake.RawReactionActionEvent):

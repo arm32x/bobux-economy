@@ -6,7 +6,8 @@ from typing import Dict
 import disnake
 from disnake.ext import commands
 
-from bobux_economy import balance, subscriptions, utils
+from bobux_economy import balance, subscriptions, transactions, utils
+from bobux_economy.bobux import Account, Bobux
 from bobux_economy.bot import BobuxEconomyBot
 from bobux_economy.cogs.error_handling import ErrorHandling
 
@@ -60,9 +61,9 @@ class Subscriptions(commands.Cog):
         price_per_week: The price of this subscription, charged weekly
         """
 
-        price, spare_change = balance.from_float(price_per_week)
+        price_per_week_bobux = Bobux.from_float(price_per_week)
 
-        async with self.bot.db_connection.cursor() as db_cursor:
+        async with utils.db_transaction(self.bot.db_connection) as db_cursor:
             await db_cursor.execute(
                 """
                 INSERT INTO
@@ -70,13 +71,16 @@ class Subscriptions(commands.Cog):
                 VALUES
                     (?, ?, ?, ?)
                 """,
-                (role.id, inter.guild.id, price, spare_change),
+                (
+                    role.id,
+                    inter.guild.id,
+                    price_per_week_bobux.amount,
+                    price_per_week_bobux.spare_change,
+                ),
             )
-            await self.bot.db_connection.commit()
 
-        price_str = balance.to_string(price, spare_change)
         await inter.response.send_message(
-            f"Created subscription for {role.mention} for {price_str} per week",
+            f"Created subscription for {role.mention} for {price_per_week_bobux} per week",
             allowed_mentions=disnake.AllowedMentions.none(),
         )
 
@@ -94,7 +98,7 @@ class Subscriptions(commands.Cog):
         role: The role of the subscription to delete
         """
 
-        async with self.bot.db_connection.cursor() as db_cursor:
+        async with utils.db_transaction(self.bot.db_connection) as db_cursor:
             await db_cursor.execute(
                 """
                 DELETE FROM available_subscriptions
@@ -104,7 +108,6 @@ class Subscriptions(commands.Cog):
                 (role.id,),
             )
             if db_cursor.rowcount == 0:
-                await self.bot.db_connection.rollback()
                 raise SubscriptionNotFound(role)
 
             await db_cursor.execute(
@@ -115,7 +118,6 @@ class Subscriptions(commands.Cog):
                 """,
                 (role.id,),
             )
-            await self.bot.db_connection.commit()
 
         await inter.response.send_message(
             f"Deleted subscription for role {role.mention}.",
@@ -163,10 +165,9 @@ class Subscriptions(commands.Cog):
         message_lines = [f"Available subscriptions in ‘{inter.guild.name}’:"]
         for row in available_subscriptions_rows:
             role_id: int = row["role_id"]
-            price: int = row["price"]
-            spare_change: bool = row["spare_change"]
+            price_per_week = Bobux(int(row["price"]), bool(row["spare_change"]))
 
-            line = f"<@&{role_id}>: {balance.to_string(price, spare_change)} per week"
+            line = f"<@&{role_id}>: {price_per_week} per week"
             if role_id in member_subscriptions_dict:
                 # TODO: Use Discord's built-in support for displaying
                 #       timestamps.
@@ -214,8 +215,7 @@ class Subscriptions(commands.Cog):
             row = await db_cursor.fetchone()
             if row is None:
                 raise SubscriptionNotFound(role)
-            price: int = row["price"]
-            spare_change: bool = row["spare_change"]
+            price_per_week = Bobux(int(row["price"]), bool(row["spare_change"]))
 
             await db_cursor.execute(
                 """
@@ -251,7 +251,7 @@ class Subscriptions(commands.Cog):
         )
         await inter.response.send_message(
             (
-                f"Subscribe to {role.mention} for {balance.to_string(price, spare_change)} per week? "
+                f"Subscribe to {role.mention} for {price_per_week} per week? "
                 f"You will be charged for the first week immediately."
             ),
             allowed_mentions=disnake.AllowedMentions.none(),
@@ -268,14 +268,20 @@ class Subscriptions(commands.Cog):
         # The interaction passed to this command is no longer valid, so
         # the global error handlers will not work. We have to handle the
         # error here.
-        user_has_been_charged = False
         try:
-            await balance.subtract(self.bot.db_connection, inter.author, price, spare_change)
-            user_has_been_charged = True
-            await subscriptions.subscribe(self.bot.db_connection, inter.author, role)
-            await button_inter.response.edit_message(
-                f"Subscribed to {role.mention}.", components=[]
-            )
+            async with utils.db_transaction(self.bot.db_connection) as db_cursor:
+                await transactions.create_transaction(
+                    self.bot.db_connection,
+                    source=Account.from_member(inter.author),
+                    destination=None,
+                    amount=price_per_week,
+                )
+                await subscriptions.subscribe(
+                    self.bot.db_connection, inter.author, role
+                )
+                await button_inter.response.edit_message(
+                    f"Subscribed to {role.mention}.", components=[]
+                )
         except Exception as ex:
             if isinstance(ex, disnake.Forbidden):
                 # We know the bot has the Manage Roles permission
@@ -288,11 +294,6 @@ class Subscriptions(commands.Cog):
                 )
             else:
                 await ErrorHandling.edit_into_error_feedback(inter, ex)
-
-            # Since there was an error, we need to refund the user if
-            # they have already been charged.
-            if user_has_been_charged:
-                await balance.add(self.bot.db_connection, inter.author, price, spare_change)
 
     @commands.slash_command(name="unsubscribe")
     @commands.bot_has_guild_permissions(manage_roles=True)

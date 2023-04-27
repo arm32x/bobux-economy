@@ -4,6 +4,7 @@ import aiosqlite
 import disnake
 
 from bobux_economy import balance
+from bobux_economy import utils
 from bobux_economy.utils import UserFacingError
 
 
@@ -40,16 +41,15 @@ async def buy(db_connection: aiosqlite.Connection, channel_type: disnake.Channel
         await balance.add(db_connection, buyer, *price)
         raise UserFacingError("The bot needs the Manage Channels permission for real estate")
 
-    async with db_connection.cursor() as db_cursor:
+    async with utils.db_transaction(db_connection) as db_cursor:
         await db_cursor.execute("""
             INSERT INTO purchased_channels(id, owner_id, guild_id, purchase_time) VALUES (?, ?, ?, ?);
         """, (channel.id, buyer.id, channel.guild.id, channel.created_at))
-        await db_connection.commit()
 
     return channel
 
 async def sell(db_connection: aiosqlite.Connection, channel: Union[disnake.TextChannel, disnake.VoiceChannel], seller: disnake.Member):
-    async with db_connection.cursor() as db_cursor:
+    async with utils.db_transaction(db_connection) as db_cursor:
         await db_cursor.execute("""
             SELECT owner_id FROM purchased_channels WHERE id = ?;
         """, (channel.id, ))
@@ -70,7 +70,6 @@ async def sell(db_connection: aiosqlite.Connection, channel: Union[disnake.TextC
         await db_cursor.execute("""
             DELETE FROM purchased_channels WHERE id = ?;
         """, (channel.id, ))
-        await db_connection.commit()
 
     await balance.add(db_connection, seller, *selling_price)
 
