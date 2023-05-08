@@ -5,7 +5,7 @@ A cog containing commands to change the bot's configuration in a guild.
 from typing import Optional
 import disnake
 from disnake.ext import commands
-from bobux_economy import utils
+from bobux_economy import config, utils
 
 from bobux_economy.bot import BobuxEconomyBot
 
@@ -38,14 +38,9 @@ class Config(commands.Cog):
         role_id = role.id if role is not None else None
         role_mention = role.mention if role is not None else "None"
 
-        async with utils.db_transaction(self.bot.db_connection) as db_cursor:
-            await db_cursor.execute(
-                """
-                    INSERT INTO guilds(id, admin_role) VALUES(?, ?)
-                        ON CONFLICT(id) DO UPDATE SET admin_role = excluded.admin_role
-                """,
-                (inter.guild.id, role_id),
-            )
+        await config.admin_role_id.set_value(
+            self.bot.db_connection, inter.guild_id, role_id
+        )
 
         await inter.response.send_message(f"Set admin role to {role_mention}")
 
@@ -66,14 +61,9 @@ class Config(commands.Cog):
         channel_id = channel.id if channel is not None else None
         channel_mention = channel.mention if channel is not None else "None"
 
-        async with utils.db_transaction(self.bot.db_connection) as db_cursor:
-            await db_cursor.execute(
-                """
-                    INSERT INTO guilds(id, memes_channel) VALUES(?, ?)
-                        ON CONFLICT(id) DO UPDATE SET memes_channel = excluded.memes_channel
-                """,
-                (inter.guild.id, channel_id),
-            )
+        await config.memes_channel_id.set_value(
+            self.bot.db_connection, inter.guild_id, channel_id
+        )
 
         await inter.response.send_message(f"Set memes channel to {channel_mention}")
 
@@ -94,14 +84,9 @@ class Config(commands.Cog):
         category_id = category.id if category is not None else None
         category_mention = f"‘{category.name}’" if category is not None else "None"
 
-        async with utils.db_transaction(self.bot.db_connection) as db_cursor:
-            await db_cursor.execute(
-                """
-                    INSERT INTO guilds(id, real_estate_category) VALUES(?, ?)
-                        ON CONFLICT(id) DO UPDATE SET real_estate_category = excluded.real_estate_category
-                """,
-                (inter.guild.id, category_id),
-            )
+        await config.real_estate_category_id.set_value(
+            self.bot.db_connection, inter.guild_id, category_id
+        )
 
         await inter.response.send_message(
             f"Set real estate category to {category_mention}"
