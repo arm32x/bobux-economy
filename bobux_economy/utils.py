@@ -1,14 +1,11 @@
-from contextlib import asynccontextmanager, closing
-import sqlite3
-from typing import AsyncIterator, Callable, Optional, TypeVar
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Callable, TypeVar
 
 import aiosqlite
 import disnake
 from disnake.ext import commands
 from disnake.ui import ActionRow, MessageUIComponent
-from bobux_economy import config
 
-from bobux_economy.bot import BobuxEconomyBot
 
 T = TypeVar("T")
 
@@ -49,6 +46,9 @@ class MissingAdminRole(commands.CheckFailure):
 
 
 def has_admin_role() -> Callable[[T], T]:
+    # Must be here to prevent circular imports
+    from bobux_economy.bot import BobuxEconomyBot
+
     async def predicate(ctx: commands.context.AnyContext) -> bool:
         # These checks are here to aid type checking.
         if ctx.guild is None or not isinstance(ctx.author, disnake.Member):
@@ -58,9 +58,7 @@ def has_admin_role() -> Callable[[T], T]:
                 f"Bot type must be BobuxEconomyBot, not '{type(ctx.bot).__name__}'"
             )
 
-        admin_role_id = await config.admin_role_id.get(
-            ctx.bot.db_connection, ctx.guild.id
-        )
+        admin_role_id = await ctx.bot.guild_config(ctx.guild).admin_role_id.get()
         if admin_role_id is not None:
             if not any(r.id == admin_role_id for r in ctx.author.roles):
                 raise MissingAdminRole(admin_role_id)

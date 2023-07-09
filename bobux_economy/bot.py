@@ -5,6 +5,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import disnake
 from disnake.ext import commands
 
+from bobux_economy.config.guild_config import GuildConfig
+
 
 class BobuxEconomyBot(commands.InteractionBot):
     db_connection: aiosqlite.Connection
@@ -33,3 +35,6 @@ class BobuxEconomyBot(commands.InteractionBot):
         )
         self.db_connection = db_connection
         self.scheduler = scheduler
+
+    def guild_config(self, guild: disnake.abc.Snowflake) -> GuildConfig:
+        return GuildConfig(self.db_connection, guild)
