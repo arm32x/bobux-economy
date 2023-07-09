@@ -16,75 +16,186 @@ class Config(commands.Cog):
         self.bot = bot
 
     @commands.slash_command(name="config")
-    @commands.has_guild_permissions(manage_guild=True)
     async def slash_config(self, _: disnake.GuildCommandInteraction):
-        """Change the settings of the bot"""
+        pass
 
-    @slash_config.sub_command(name="admin_role")
-    async def slash_config_admin_role(
-        self,
-        inter: disnake.GuildCommandInteraction,
-        role: Optional[disnake.Role] = None,
+    @slash_config.sub_command_group(name="admin_role")
+    async def slash_config_admin_role(self, _: disnake.GuildCommandInteraction):
+        pass
+
+    @slash_config_admin_role.sub_command(name="get")
+    async def slash_config_admin_role_get(self, inter: disnake.GuildCommandInteraction):
+        """
+        Show which role is currently required to modify balances
+        """
+
+        role_id = await self.bot.guild_config(inter.guild).admin_role_id.get()
+        role_mention = f"<@&{role_id}>" if role_id is not None else "unset"
+
+        await inter.response.send_message(
+            f"Admin role is currently {role_mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+            ephemeral=True,
+        )
+
+    @slash_config_admin_role.sub_command(name="set")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_admin_role_set(
+        self, inter: disnake.GuildCommandInteraction, role: disnake.Role
     ):
         """
         Change which role is required to modify balances
 
         Parameters
         ----------
-        role: The role to set, or blank to remove
+        role: The role to set
         """
 
-        role_id = role.id if role is not None else None
-        role_mention = role.mention if role is not None else "None"
+        await self.bot.guild_config(inter.guild).admin_role_id.set(role.id)
 
-        await self.bot.guild_config(inter.guild).admin_role_id.set(role_id)
+        await inter.response.send_message(
+            f"Set admin role to {role.mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+        )
 
-        await inter.response.send_message(f"Set admin role to {role_mention}")
-
-    @slash_config.sub_command(name="memes_channel")
-    async def slash_config_memes_channel(
-        self,
-        inter: disnake.GuildCommandInteraction,
-        channel: Optional[disnake.TextChannel] = None,
+    @slash_config_admin_role.sub_command(name="unset")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_admin_role_unset(
+        self, inter: disnake.GuildCommandInteraction
     ):
         """
-        Set the channel where upvote reactions are enabled
+        Unset the admin role, allowing anyone with Manage Server
+        permissions to modify balances
+        """
+
+        await self.bot.guild_config(inter.guild).admin_role_id.set(None)
+
+        await inter.response.send_message(
+            "Unset admin role; falling back to Manage Server permissions",
+            allowed_mentions=disnake.AllowedMentions.none(),
+        )
+
+    @slash_config.sub_command_group(name="memes_channel")
+    async def slash_config_memes_channel(self, _: disnake.GuildCommandInteraction):
+        pass
+
+    @slash_config_memes_channel.sub_command(name="get")
+    async def slash_config_memes_channel_get(
+        self, inter: disnake.GuildCommandInteraction
+    ):
+        """
+        Show which channel vote reactions are enabled in
+        """
+
+        channel_id = await self.bot.guild_config(inter.guild).memes_channel_id.get()
+        channel_mention = f"<#{channel_id}>" if channel_id is not None else "unset"
+
+        await inter.response.send_message(
+            f"Memes channel is currently {channel_mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+            ephemeral=True,
+        )
+
+    @slash_config_memes_channel.sub_command(name="set")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_memes_channel_set(
+        self,
+        inter: disnake.GuildCommandInteraction,
+        channel: disnake.TextChannel,
+    ):
+        """
+        Change which channel vote reactions are enabled in
 
         Parameters
         ----------
-        channel: The channel to set, or blank to remove
+        channel: The channel to enable reactions in
         """
 
-        channel_id = channel.id if channel is not None else None
-        channel_mention = channel.mention if channel is not None else "None"
+        await self.bot.guild_config(inter.guild).memes_channel_id.set(channel.id)
 
-        await self.bot.guild_config(inter.guild).memes_channel_id.set(channel_id)
+        await inter.response.send_message(
+            f"Set memes channel to {channel.mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+        )
 
-        await inter.response.send_message(f"Set memes channel to {channel_mention}")
+    @slash_config_memes_channel.sub_command(name="unset")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_memes_channel_unset(
+        self, inter: disnake.GuildCommandInteraction
+    ):
+        """
+        Unset the memes channel, disabling vote reactions
+        """
 
-    @slash_config.sub_command(name="real_estate_category")
+        await self.bot.guild_config(inter.guild).memes_channel_id.set(None)
+
+        await inter.response.send_message(
+            "Unset memes channel",
+            allowed_mentions=disnake.AllowedMentions.none(),
+        )
+
+    @slash_config.sub_command_group(name="real_estate_category")
     async def slash_config_real_estate_category(
-        self,
-        inter: disnake.GuildCommandInteraction,
-        category: Optional[disnake.CategoryChannel] = None,
+        self, _: disnake.GuildCommandInteraction
+    ):
+        pass
+
+    @slash_config_real_estate_category.sub_command(name="get")
+    async def slash_config_real_estate_category_get(
+        self, inter: disnake.GuildCommandInteraction
+    ):
+        """
+        Show the category where purchased real estate channels appear
+        """
+
+        category_id = await self.bot.guild_config(
+            inter.guild
+        ).real_estate_category_id.get()
+        category_mention = f"<#{category_id}>" if category_id is not None else "unset"
+
+        await inter.response.send_message(
+            f"Real estate category is currently {category_mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+            ephemeral=True,
+        )
+
+    @slash_config_real_estate_category.sub_command(name="set")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_real_estate_category_set(
+        self, inter: disnake.GuildCommandInteraction, category: disnake.CategoryChannel
     ):
         """
         Set the category where purchased real estate channels appear
 
         Parameters
         ----------
-        category: The category to set, or blank to remove
+        category: The category to set
         """
 
-        category_id = category.id if category is not None else None
-        category_mention = f"‘{category.name}’" if category is not None else "None"
-
         await self.bot.guild_config(inter.guild).real_estate_category_id.set(
-            category_id
+            category.id
         )
 
         await inter.response.send_message(
-            f"Set real estate category to {category_mention}"
+            f"Set real estate category to {category.mention}",
+            allowed_mentions=disnake.AllowedMentions.none(),
+        )
+
+    @slash_config_real_estate_category.sub_command(name="unset")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def slash_config_real_estate_category_unset(
+        self, inter: disnake.GuildCommandInteraction
+    ):
+        """
+        Unset the real estate category, preventing anyone from
+        purchasing real estate channels
+        """
+
+        await self.bot.guild_config(inter.guild).real_estate_category_id.set(None)
+
+        await inter.response.send_message(
+            "Unset real estate category",
+            allowed_mentions=disnake.AllowedMentions.none(),
         )
 
 
