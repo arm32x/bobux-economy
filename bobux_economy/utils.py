@@ -58,7 +58,7 @@ def has_admin_role() -> Callable[[T], T]:
                 f"Bot type must be BobuxEconomyBot, not '{type(ctx.bot).__name__}'"
             )
 
-        admin_role_id = await config.admin_role_id.get_value(
+        admin_role_id = await config.admin_role_id.get(
             ctx.bot.db_connection, ctx.guild.id
         )
         if admin_role_id is not None:

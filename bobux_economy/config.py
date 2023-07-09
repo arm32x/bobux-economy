@@ -13,7 +13,7 @@ class GuildOption(Generic[T]):
     def __init__(self, name: str):
         self.name = name
 
-    async def get_value(
+    async def get(
         self, db_connection: aiosqlite.Connection, guild_id: int
     ) -> Optional[T]:
         async with db_connection.cursor() as db_cursor:
@@ -32,7 +32,7 @@ class GuildOption(Generic[T]):
 
             return value
 
-    async def set_value(
+    async def set(
         self, db_connection: aiosqlite.Connection, guild_id: int, value: Optional[T]
     ):
         async with utils.db_transaction(db_connection) as db_cursor:
