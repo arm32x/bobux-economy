@@ -52,8 +52,8 @@ async def main():
 
         bot.load_extension("bobux_economy.cogs.bal")
         bot.load_extension("bobux_economy.cogs.bot_info")
-        bot.load_extension("bobux_economy.cogs.config")
         bot.load_extension("bobux_economy.cogs.error_handling")
+        bot.load_extension("bobux_economy.cogs.guild_config")
         bot.load_extension("bobux_economy.cogs.real_estate")
         bot.load_extension("bobux_economy.cogs.relocate")
         bot.load_extension("bobux_economy.cogs.subscriptions")

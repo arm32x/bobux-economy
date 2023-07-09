@@ -2,14 +2,13 @@
 A cog containing commands to change the bot's configuration in a guild.
 """
 
-from typing import Optional
 import disnake
 from disnake.ext import commands
 
 from bobux_economy.bot import BobuxEconomyBot
 
 
-class Config(commands.Cog):
+class GuildConfig(commands.Cog):
     bot: BobuxEconomyBot
 
     def __init__(self, bot: BobuxEconomyBot):
@@ -200,4 +199,4 @@ class Config(commands.Cog):
 
 
 def setup(bot: BobuxEconomyBot):
-    bot.add_cog(Config(bot))
+    bot.add_cog(GuildConfig(bot))
