@@ -83,8 +83,16 @@ class Voting(commands.Cog):
             await upvotes.remove_extra_reactions(message, payload.member, None)
             return
 
-        await upvotes.record_vote(
+        previous_vote = await upvotes.record_vote(
             self.bot, payload.message_id, payload.channel_id, payload.member.id, vote
+        )
+        await upvotes.give_vote_rewards_raw(
+            self.bot,
+            payload.message_id,
+            payload.channel_id,
+            payload.member.id,
+            previous_vote,
+            vote,
         )
         await upvotes.remove_extra_reactions(message, payload.member, vote)
 
@@ -120,12 +128,19 @@ class Voting(commands.Cog):
             )
             return
 
-        await upvotes.delete_vote(
+        previous_vote = await upvotes.delete_vote(
+            self.bot,
+            payload.message_id,
+            payload.user_id,
+            check_equal_to=vote,
+        )
+        await upvotes.give_vote_rewards_raw(
             self.bot,
             payload.message_id,
             payload.channel_id,
             payload.user_id,
-            check_equal_to=vote,
+            previous_vote,
+            None,
         )
         user = self.bot.get_user(payload.user_id) or await self.bot.fetch_user(
             payload.user_id

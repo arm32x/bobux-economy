@@ -57,7 +57,7 @@ async def main():
         bot.load_extension("bobux_economy.cogs.real_estate")
         bot.load_extension("bobux_economy.cogs.relocate")
         bot.load_extension("bobux_economy.cogs.subscriptions")
-        # bot.load_extension("bobux_economy.cogs.voting")
+        bot.load_extension("bobux_economy.cogs.voting")
 
         with open("data/token.txt", "r") as token_file:
             token = token_file.read()
