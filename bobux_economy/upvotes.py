@@ -7,6 +7,7 @@ import disnake as disnake
 
 from bobux_economy import balance, utils
 from bobux_economy.bot import BobuxEconomyBot
+from bobux_economy.config.guild_config import GuildConfig
 
 # TODO: Make these configurable.
 UPVOTE_EMOJI = "⬆️"
@@ -24,15 +25,12 @@ async def message_eligible(
     if message.guild is None:
         return False
 
-    async with db_connection.cursor() as db_cursor:
-        await db_cursor.execute(
-            "SELECT memes_channel FROM guilds WHERE id = ?;", (message.guild.id,)
-        )
-        row = await db_cursor.fetchone()
+    in_vote_channel = await GuildConfig(
+        db_connection, message.guild
+    ).vote_channel_ids.contains(message.channel.id)
 
     return (
-        row is not None
-        and message.channel.id == row["memes_channel"]
+        in_vote_channel
         and not message.content.startswith("💬")
         and not message.content.startswith("🗨️")
     )
