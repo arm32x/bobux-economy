@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bobux-economy"
-version = "0.8.1"
+version = "0.9.1-dev"
 description = ""
 authors = ["arm32x <arm32.x@gmail.com>"]
 license = "GPL-3.0-only"
