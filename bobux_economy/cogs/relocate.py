@@ -68,53 +68,6 @@ class Relocate(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.message_command(name="Send to Memes Channel", dm_permission=False)
-    # There are additional permission checks in the command body that
-    # check against the memes channel.
-    @commands.bot_has_permissions(manage_messages=True)
-    @commands.has_permissions(manage_messages=True)
-    async def message_send_to_memes_channel(self, inter: disnake.MessageCommandInteraction):
-        if (
-            inter.guild is None
-            or not isinstance(inter.author, disnake.Member)
-            or not isinstance(inter.me, disnake.Member)
-        ):
-            raise commands.errors.NoPrivateMessage()
-
-        async with self.bot.db_connection.cursor() as db_cursor:
-            await db_cursor.execute(
-                "SELECT memes_channel FROM guilds WHERE id = ?", (inter.guild.id,)
-            )
-            row = await db_cursor.fetchone()
-
-        if row is None or row["memes_channel"] is None:
-            raise commands.errors.CommandError(
-                "No memes channel is configured on this server."
-            )
-
-        memes_channel_id = int(row["memes_channel"])
-        memes_channel = self.bot.get_channel(
-            memes_channel_id
-        ) or await self.bot.fetch_channel(memes_channel_id)
-
-        if not isinstance(memes_channel, disnake.TextChannel):
-            raise RuntimeError("Memes channel must be a text channel (should be checked in /config).")
-
-        # These permission checks cannot be expressed as decorators
-        # because they depend on the configured memes channel.
-        if not memes_channel.permissions_for(inter.author).manage_messages:
-            raise commands.errors.MissingPermissions(["manage_messages"])
-        if not memes_channel.permissions_for(inter.me).manage_webhooks:
-            raise commands.errors.BotMissingPermissions(["manage_webhooks"])
-
-        await self._relocate_message(inter.target, memes_channel, remove_speech_bubbles=True)
-
-        await inter.response.send_message(
-            f"Relocated message to {memes_channel.mention}",
-            allowed_mentions=disnake.AllowedMentions.none(),
-            ephemeral=True
-        )
-
     async def _relocate_message(
         self,
         message: disnake.Message,
